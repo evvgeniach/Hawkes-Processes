@@ -31,12 +31,11 @@ all_data_zika <- rbind(all_simulations_zika, df_new_times)
 # Create the plot
 plot_zika<- ggplot() +
   theme_bw() +
-  labs(title = "Comparison of Simulated and Real Data for Zika",
-       x = "Time (days)",
+  labs(x = "Time (days)",
        y = expression(N(t))) +
   theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
 
 # Add the simulated data lines
 plot_zika <- plot_zika +
@@ -50,6 +49,8 @@ plot_zika <- plot_zika +
             aes(x = t, y = N), color = "red", size = 1)
 
 print(plot_zika)
+
+#save 8 by 6 dimensions landscape
 
 ## NON cumulative plot
 
@@ -103,12 +104,11 @@ all_simulations_non_cum_zika$Simulation <- as.factor(all_simulations_non_cum_zik
 # Create the plot for WEEKS
 plot_non_cum_zika <- ggplot() +
   theme_bw() +
-  labs(title = "Counts of Simulated Events and True Observations of Zika",
-       x = "Time (Weeks)",
+  labs(x = "Time (Weeks)",
        y = "Count") +
   theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
 
 # Add the simulated data lines
 plot_non_cum_zika <- plot_non_cum_zika +
@@ -134,12 +134,11 @@ all_simulations_df_zika$Num_Days <- as.numeric(difftime(all_simulations_df_zika$
 # Create the plot for DAYS
 plot_days_zika <- ggplot() +
   theme_bw() +
-  labs(title = "Counts of Simulated Events and True Observations of Zika",
-       x = "Time (Days)",
+  labs(x = "Time (Days)",
        y = "Count") +
   theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
 
 # Add the simulated data lines
 plot_days_zika <- plot_days_zika +
@@ -147,48 +146,10 @@ plot_days_zika <- plot_days_zika +
 
 # Add the real data line
 plot_days_zika <- plot_days_zika +
-  geom_line(data = all_simulations_df_zika, aes(x = Num_Days, y = True_days), color = "red", size = 0.3)
+  geom_line(data = all_simulations_df_zika, aes(x = Num_Days, y = True_days), color = "red", size = 0.7)
 
 print(plot_days_zika)
 
-
-# Reshape the data
-library(tidyverse)
-all_simulations_df_zika_long <- all_simulations_df_zika %>%
-  pivot_longer(c(Simulated_days, True_days), names_to = "Type", values_to = "Count")
-# Create the bar plot for DAYS
-plot_days_zika <- ggplot(all_simulations_df_zika_long, aes(x = as.factor(Num_Days), y = Count, fill = Type)) +
-  geom_col(position = position_dodge()) +
-  labs(title = "Counts of Simulated Events and True Observations of Zika",
-       x = "Time (Days)",
-       y = "Count") +
-  theme_bw() +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text.x = element_text(size = 12, angle = 90))
-
-print(plot_days_zika)
-
-## bar plot now
-
-plot_days_zika <- ggplot() +
-  theme_bw() +
-  labs(title = "Counts of Simulated Events and True Observations of Zika",
-       x = "Time (Days)",
-       y = "Count") +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
-
-# Add the simulated data bars
-plot_days_zika <- plot_days_zika +
-  geom_bar(data = all_simulations_df_zika, aes(x = Num_Days, y = Simulated_days, fill = Simulation), stat = "identity", alpha = 0.1, color = "black")
-
-# Add the real data bar
-plot_days_zika <- plot_days_zika +
-  geom_bar(data = all_simulations_df_zika, aes(x = Num_Days, y = True_days), stat = "identity", fill = "red", color = "red")
-
-print(plot_days_zika)
 
 ################## Intensities ################
 
@@ -196,35 +157,35 @@ print(plot_days_zika)
 list_intensities <- list()
 parameters = list(alpha = alpha_zika,
                   delta = delta_zika,
-                  #A = A_zika,
-                  #B = B_zika,
-                  #C = C_zika,
-                  M = M_zika,
-                  N= N_zika,
-                  #P = P_zika,
-                  delay = 0)
+                  A = A_zika,
+                  B = B_zika,
+                  C = C_zika,
+                  #M = 18.404159,
+                  #N= -3.054688,
+                  #P = 98.929048,
+                  delay = 10)
 for(i in 1:N_runs){
   events <- list_events[[i]]
-  data <- compute_intensity_function(events = events, kernel = exp_kernel, 
+  data <- compute_intensity_function(events = events, kernel = ray_kernel, 
                                      T_max = max(new_times), parameters = parameters, mu_fn = mu_fn, 
                                      N = 5000)
   mu_ts <- mu_fn(events, parameters =  parameters)
   event_intensities <- mu_ts + conditional_intensity_list(times = events +1e-10, 
                                                           events = events, 
-                                                          kernel = exp_kernel, 
+                                                          kernel = ray_kernel, 
                                                           parameters = parameters)
   data_events <- data.frame(t = events, intensity = event_intensities, type = paste("Simulated Data ", i))
   list_intensities[[i]] <- data_events
 }
 
 # Calculate intensities for the real data
-data <- compute_intensity_function(events = new_times, kernel =exp_kernel, 
+data <- compute_intensity_function(events = new_times, kernel =ray_kernel, 
                                    T_max = max(new_times), parameters = parameters, mu_fn = mu_fn, 
                                    N = 5000)
 mu_ts <- mu_fn(new_times, parameters =  parameters)
 event_intensities <- mu_ts + conditional_intensity_list(times = new_times +1e-10, 
                                                         events = new_times, 
-                                                        kernel = exp_kernel, 
+                                                        kernel = ray_kernel, 
                                                         parameters = parameters)
 df_new_times <- data.frame(t = new_times, intensity = event_intensities, type = "Real Data")
 
@@ -232,12 +193,11 @@ df_new_times <- data.frame(t = new_times, intensity = event_intensities, type = 
 # plot the intensities
 plot <- ggplot() +
   theme_bw() +
-  labs(title = "Comparison of Simulated and Real Intensities",
-       x = "Time (weeks)",
+  labs(x = "Time (days)",
        y = expression(lambda(t))) +
   theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
 
 # Add the simulated data lines with alpha for transparency
 for(i in 1:N_runs){
@@ -251,5 +211,85 @@ plot <- plot + geom_line(data = df_new_times, aes(x = t, y = intensity), color =
 print(plot)
 
 
+############# Goodness of fit ##############
+
+new_times1 <- new_times + 0.0001
+cumulative_intensities1 <- sapply(new_times1, function(t) {
+  integral_intensity(events = new_times1[new_times1 <= t], int_kernel = int_ray, 
+                     parameters = parameters, mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
+                     mu_int_fn = mu_int_fn)
+})
+
+compensator<-ggplot(data.frame(x = 1:length(new_times1) , y=cumulative_intensities1), aes(x = x, y = y)) +
+  geom_point(size=0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size = 0.7) +
+  xlab("i") + 
+  ylab(expression(Lambda(t[i]))) + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(size = 18, family = "Calibri"),
+    axis.title.y = element_text(size = 18, family = "Calibri"),
+    axis.text = element_text(size = 18, family = "Calibri")
+  )
 
 
+## Very good
+
+#### intensities using Inter-arrival times 
+inter_arrival_int <-c()
+for(i in 1:length(cumulative_intensities1)-1){
+  inter_arrival_int<-c(inter_arrival_int, cumulative_intensities1[i+1] - cumulative_intensities1[i])
+}
+
+
+uk<- 1-exp(-inter_arrival_int)
+
+uk<-sort(uk)
+bk<-c()
+for(i in 1:length(uk)){
+  bk<-c(bk,(i-(1/2))/length(uk))
+}
+## or could do qunif(ppoints(nrow(df)))
+
+# Create a data frame to hold your data
+df <- data.frame(CalculatedIntensities = uk, UniformRandomData = bk)
+
+# Calculate confidence intervals
+confint_n <- length(df$CalculatedIntensities)
+conf_int <- 1.36 / sqrt(confint_n)
+
+# Add upper and lower confidence intervals to your data frame
+df$upperCI <- bk + conf_int
+df$lowerCI <- bk - conf_int
+# Plot the data using ggplot
+library(extrafont)
+library(ggplot2)
+ggplot(df, aes(x = UniformRandomData, y = CalculatedIntensities)) +
+  geom_point(size=0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", size = 0.6) +
+  geom_line(aes(y = upperCI), linetype = "dashed", color = "blue", size=0.4) +
+  geom_line(aes(y = lowerCI), linetype = "dashed", color = "blue", size=0.4) +
+  labs(x = "Quantiles", 
+       y = "Cumulative Distribution Function") +
+  theme_minimal() +
+  theme(text = element_text(size = 18, family = "Calibri"),
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
+
+#### QQ plot ####
+
+
+df$lowerBetaCI <- qbeta(0.025, (1:confint_n), confint_n:1 + 1)
+df$upperBetaCI <- qbeta(0.975, (1:confint_n), confint_n:1 + 1)
+
+ggplot(df, aes(x = UniformRandomData, y = CalculatedIntensities)) +
+  geom_point(size=0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", size = 0.6) +
+  geom_line(aes(y = upperBetaCI), linetype = "dashed", color = "blue", size=0.4) +
+  geom_line(aes(y = lowerBetaCI), linetype = "dashed", color = "blue",size=0.4) +
+  labs(x = "Theoretical Quantiles", 
+       y = "Empirical Quantiles") +
+  theme_minimal() +
+  theme(text = element_text(size = 18, family = "Calibri"),
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))

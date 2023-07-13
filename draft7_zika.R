@@ -35,23 +35,27 @@ ggplot(data.frame(total_days = 1:zika_days, cum_cases_2), aes(x = total_days, y 
 library(dplyr)
 library(lubridate)
 library(purrr)
-set.seed(50)
+set.seed(20)
+generate_timestamps <- function(n) {
+  sample(seq(from = 0, to = 24*60*60 - 1), size = n, replace = TRUE)
+}
+
 df2 <- zika_girardot_2015 %>%
   mutate(date2 = as.POSIXct(date)) %>%
-  mutate(case_hour = lapply(cases, function(x) as.list(as.integer(runif(x, 0, 24))))) %>%
-  mutate(case_epoch = map2(date2, case_hour, function(d, h) d + hours(h)))
+  mutate(case_hour = map(cases, generate_timestamps))
 
 library(tidyr)
-df2<-unnest(df2, case_epoch)
+df2<-unnest(df2, case_hour)
+df2$case_epoch <- df2$date2 + df2$case_hour
 df2<- df2[order(df2$case_epoch),]
 library(epihawkes)
 library(DEoptim)
 min_time <- min(df2$case_epoch)
 df2$case_epoch <- df2$case_epoch - min_time
 new_times <- c(as.integer(df2$case_epoch))/86400 # turn seconds to days
-mu_fn <- mu_sinusoidal
-mu_diff_fn <- mu_diff_sinusoidal
-mu_int_fn <- mu_int_sinusoidal
+mu_fn <- mu_quadratic
+mu_diff_fn <- mu_diff_quadratic
+mu_int_fn <- mu_int_quadratic
 ## first attempt with sinusoidal with linearity with rayleigh: worked ok but not great results (delay 22)
 ## second attempt with sinusoidal with linearity and period with rayleigh: error: check mu function is not increasing (delay 22)
 ## third attempt with quadratic with rayleigh: same error (delay 22)
@@ -92,6 +96,14 @@ mu_int_fn <- mu_int_sinusoidal
 ## 26th attempt: constant with exponential and delay 0: not good either
 ## 27th attempt: sinusoidal with exp and delay 0: not that good
 ## parameters: $alpha 0.6802088, $delta 0.713373, $M 1.577837,$N 0.01906901,$delay 0
+## 28th attempt: sinusoidal with linearity with exp and delay 0: (-4593.755221) worst
+## params: alpha=0.824368,    0.837784   18.783695   -2.268760   19.015402   17.876115
+## 29th attempt: sinusoidal with linearity and period with exp and delay 0: error
+
+## 30th attempt: sinusoidal with linearity and period with ray and delay 0: worst results
+## 31st attempt: constant with ray and delay 0: good
+## parameters: alpha = 2.464507, delta = 2.626202, A=1.276636, delay = 0.
+## 32nd attempt: quadratic with rayleigh and delay 10: alpha=0.1412493, delta=0.2595605,A=0.1587731, B=1.86735,C=-0.03459858
 
 neg_log_likelihood_linear <- function(parameters, events, delay = 0, kernel, mu_fn = mu_none, 
                                         mu_diff_fn = mu_diff_none, mu_int_fn = mu_int_none, 
@@ -102,12 +114,12 @@ neg_log_likelihood_linear <- function(parameters, events, delay = 0, kernel, mu_
   return(out)
 }
 #https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2819875/ , delay = 10
-zika_optim <- DEoptim(neg_log_likelihood_sinusoidal, lower = c(0,0,-20,-20), 
-                      upper = c(20,20,20,20), 
+zika_optim <- DEoptim(neg_log_likelihood_quadratic, lower = c(0,0,0,-10,-10), 
+                      upper = c(10,10,15,15,15), 
                     events = new_times,
-                    kernel = exp_kernel, 
+                    kernel = ray_kernel, 
                     mu_fn = mu_fn, 
-                    delay = 0,
+                    delay = 10,
                     mu_diff_fn = mu_diff_fn,
                     mu_int_fn = mu_int_fn, 
                     control = list(itermax = 200, parallelType = "parallel"))
@@ -118,38 +130,50 @@ n_start_points <- 20
 start_points <- as.list(replicate(n_start_points, list(
   alpha = log(sample(2:30, 1)), 
   delta = log(sample(2:30, 1)), 
-  A = log(sample(2:30, 1))
-  #B = log(sample(2:10, 1)),
-  #C = log(sample(2:10, 1))
+  A = log(sample(2:30, 1)),
+  B = log(sample(2:10, 1)),
+  C = log(sample(2:10, 1))
   ), simplify = FALSE))
 
 
-outtt_zika <- list()
-for(i in 1:20){
-  npar <- 3 #we have 4 parameters
-  outtt_zika[[i]]<- optimx(par = unlist(start_points[[i]]), fn = my_neg_log_likelihood, gr = transformed_gradients_exp,
-                      method="BFGS",
-                      events = new_times, 
-                      kernel = exp_kernel,
-                      delay = 0,
-                      mu_fn = mu_fn, 
-                      mu_diff_fn = mu_diff_fn,
-                      mu_int_fn = mu_int_fn)
-  outtt_zika[[i]][1:npar] <-exp(outtt_zika[[i]][1:npar])
+library(doParallel)
+library(foreach)
+
+# register the number of cores to use for parallel processing
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+
+npar <- 5 #we have 4 parameters
+
+# rewrite the loop with foreach
+outtt_zika <- foreach(i = 1:20, .packages=c('optimx','epihawkes')) %dopar% {
+  result <- optimx(par = unlist(start_points[[i]]), fn = my_neg_log_likelihood, gr = transformed_gradients,
+                   method="BFGS",
+                   events = new_times, 
+                   kernel = ray_kernel,
+                   delay = 10,
+                   mu_fn = mu_fn, 
+                   mu_diff_fn = mu_diff_fn,
+                   mu_int_fn = mu_int_fn)
+  result[1:npar] <-exp(result[1:npar])
+  return(result)
 }
 
-N_runs <- 300
+# stop the cluster
+stopCluster(cl)
+
+N_runs <- 500
 library(doParallel)
 library(foreach)
 T_max = max(new_times)
-set.seed(5)
+set.seed(25)
 alpha_zika <- as.numeric(zika_optim$optim$bestmem[1])
 delta_zika <- as.numeric(zika_optim$optim$bestmem[2])
-#A_zika <-as.numeric(zika_optim$optim$bestmem[3])
-#B_zika <-as.numeric(zika_optim$optim$bestmem[4])
-#C_zika <-as.numeric(zika_optim$optim$bestmem[5])
-M_zika <-as.numeric(zika_optim$optim$bestmem[3])
-N_zika <- as.numeric(zika_optim$optim$bestmem[4])
+A_zika <-as.numeric(zika_optim$optim$bestmem[3])
+B_zika <-as.numeric(zika_optim$optim$bestmem[4])
+C_zika <-as.numeric(zika_optim$optim$bestmem[5])
+#M_zika <-as.numeric(zika_optim$optim$bestmem[5])
+#N_zika <- as.numeric(zika_optim$optim$bestmem[6])
 #P_zika <- as.numeric(zika_optim$optim$bestmem[7])
 # Register the parallel backend
 no_cores <- detectCores()
@@ -157,17 +181,17 @@ registerDoParallel(cores=no_cores)
 
 # Running the simulation in parallel
 list_events <- foreach(i = 1:N_runs, .packages = "epihawkes") %dopar% {
-  events <- hawkes_simulation(events = c(0), kernel = exp_kernel, 
+  events <- hawkes_simulation(events = c(0), kernel = ray_kernel, 
                               T_max = max(new_times),
-                              parameters = list(alpha = alpha_zika,
-                                                delta = delta_zika,
-                                                #A = A_zika,
-                                                #B = B_zika,
-                                                #C = C_zika,
-                                                M = M_zika,
-                                                N= N_zika,
-                                                #P = P_zika,
-                                                delay = 0), 
+                              parameters = list(alpha = alpha_zika  ,
+                                                delta = delta_zika  ,
+                                                A = A_zika ,
+                                                B = B_zika,
+                                                C = C_zika,
+                                                #M = 18.404159,
+                                                #N= -3.054688,
+                                                #P = 98.929048,
+                                                delay = 10), 
                               mu_fn = mu_fn,
                               mu_fn_diff = mu_diff_fn,
                               N_max = length(new_times),
@@ -177,12 +201,4 @@ list_events <- foreach(i = 1:N_runs, .packages = "epihawkes") %dopar% {
 
 plot_events(list_events[[2]], T_max = max(new_times))
 plot_events(new_times, T_max = max(new_times))
-
-
-devtools::install_github('behavioral-ds/evently')
-library(evently)
-fitted_model <- fit_series(new_times, model_type = 'EXP', observation_time = max(new_times), cores = 8)
-
-#library(outbreaks)
-#print(n=57,dengue_fais_2011)
 

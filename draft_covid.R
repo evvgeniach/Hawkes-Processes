@@ -2,9 +2,30 @@
 library(utils)
 library(dplyr)
 library(tidyr)
+library(readr)
+library(lubridate)
+
+# Parse the dates
+date1 <- ymd("2022-09-01")
+date2 <- ymd("2022-10-25")
+
+# Calculate the week numbers
+week1 <- isoweek(date1) #35
+week2 <- isoweek(date2) # 43
+
+
+variants <- read_csv("data.csv")
+variants <- variants %>% dplyr::filter(country == "Malta")
+variants <-variants %>% dplyr::filter(year_week >= "2022-35" & year_week <= "2022-43")
+
+# Count the number of occurrences of each variant
+variant_counts <- variants %>% count(variant)
+
+most_frequent_variant <- variant_counts %>% arrange(desc(n))
 
 #read the Dataset sheet into “R”. The dataset will be called "data".
 covid <- read.csv("https://opendata.ecdc.europa.eu/covid19/nationalcasedeath_eueea_daily_ei/csv", na.strings = "", fileEncoding = "UTF-8-BOM")
+
 countries<-unique(covid$countriesAndTerritories)
 covid <- covid %>% dplyr::filter(countriesAndTerritories == "Malta")
 covid$dateRep <- as.Date(covid$dateRep, format="%d/%m/%Y")
@@ -22,13 +43,17 @@ covid_filled = dplyr::summarise(covid_filled, total_cases = sum(cases, na.rm = T
 covid_filled <- as.data.frame(covid_filled)
 library(extrafont)
 library(ggplot2)
-ggplot(covid_filled, aes(x = 1:covid_days, y = total_cases)) +
-  geom_col(fill = "steelblue", width = 0.7) +
-  labs(title = "Plot of cases for COVID-19",
-       x = "Number of days",
-       y = "Cases") +
-  theme(text = element_text(size = 18, family = "Calibri"),  # Increase text size and set font
-        axis.text = element_text(size = 18, family = "Calibri"))
+ggplot(covid_filled, aes(x = as.Date(dateRep), y = total_cases)) +
+  theme_bw() +
+  geom_col(fill = "steelblue", color = "black", width = 0.6) +
+  labs(x = "Date of case report",
+       y = "Count") +
+  #scale_x_date(date_labels = "%d-%b", date_breaks = "2 weeks", ) +
+  theme(
+    axis.title.x = element_text(size = 24, family="Calibri"),
+    axis.title.y = element_text(size = 24, family="Calibri"),
+    axis.text = element_text(size = 24, family="Calibri")
+  )
 
 ggplot(covid_filled, aes(x = 1:covid_days, y = total_cases)) +
   geom_line() +
@@ -82,13 +107,15 @@ ggplot(week_dat_covid, aes(x = Week, y = cum_cases)) +
         axis.text = element_text(size = 18, family = "Calibri"))
 
 ggplot(week_dat_covid, aes(x = Week, y = total_cases)) +
-  geom_col(fill = "red", width = 0.3) +
-  labs(title = "Plot of Weeks and Cases for COVID-19",
-       x = "Weeks",
-       y = "Cases") +
-  theme(text = element_text(size = 18, family = "Calibri"),  # Increase text size and set font
-        axis.text = element_text(size = 18, family = "Calibri"))
-
+  theme_bw() +
+  geom_col(fill = "steelblue", color = "black", width = 0.5) +
+  labs(x = "Weeks",
+       y = "Count") +
+  theme(
+    axis.title.x = element_text(size = 24, family="Calibri"),
+    axis.title.y = element_text(size = 24, family="Calibri"),
+    axis.text = element_text(size = 24, family="Calibri")
+  )
 
 ############### Optimizing #################
 
@@ -126,14 +153,14 @@ mu_fn <- mu_constant
 mu_diff_fn <- mu_diff_constant
 mu_int_fn <- mu_int_constant
 #delay = 5, https://www.cambridge.org/core/journals/epidemiology-and-infection/article/estimation-of-the-incubation-period-and-generation-time-of-sarscov2-alpha-and-delta-variants-from-contact-tracing-data/29F10A5324C8E6EB1567496D3B154740
-# with delay 0, parameters: alpha = 0.8404435, delta= 2.5316182, A = 14.5791273.
-# test with delay 5 as well.
+# constant mu with delay 0, parameters: alpha = 0.8404435, delta= 2.5316182, A = 14.5791273.
+# test with delay 5 as well: parameters: alpha =  0.05750214, delta = 0.7811818 ,A = 20.31431, better goodness of fit.
 covid_optim1 <- DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), 
-                      upper = c(10,10,20), 
+                      upper = c(10,100,25), 
                       events = new_times_covid, 
                       kernel = exp_kernel, 
                       mu_fn = mu_fn, 
-                      delay = 0,
+                      delay = 5,
                       mu_diff_fn = mu_diff_fn,
                       mu_int_fn = mu_int_fn, 
                       control = list(itermax = 200, parallelType = "parallel"))
@@ -145,8 +172,8 @@ n_start_points <- 20
 start_points <- as.list(replicate(n_start_points, list(
   alpha = log(sample(2:30, 1)), 
   delta = log(sample(2:30, 1)), 
-  A = log(sample(2:30, 1)),
-  B = log(sample(2:30, 1))
+  A = log(sample(2:30, 1))
+  #B = log(sample(2:30, 1))
   #C = log(sample(2:10, 1))
 ), simplify = FALSE))
 
@@ -154,46 +181,25 @@ start_points <- as.list(replicate(n_start_points, list(
 cl <- makeCluster(detectCores())
 registerDoParallel(cl)
 
-npar <- 4 #we have 4 parameters
+npar <- 3 #we have 3 parameters
 
 # rewrite the loop with foreach
 outtt_covid <- foreach(i = 1:20, .packages=c('optimx','epihawkes')) %dopar% {
-  result <- optimx(par = unlist(start_points[[i]]), fn = my_neg_log_likelihood, gr = transformed_gradients,
+  result <- optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = exp_derivatives,
                    method="BFGS",
                    events = new_times_covid, 
-                   kernel = ray_kernel,
+                   kernel = exp_kernel,
                    delay = 5,
                    mu_fn = mu_fn, 
                    mu_diff_fn = mu_diff_fn,
                    mu_int_fn = mu_int_fn)
-  result[1:npar] <-exp(result[1:npar])
+  #result[1:npar] <-exp(result[1:npar])
   return(result)
 }
 
 # stop the cluster
 stopCluster(cl)
 ## parameters 0.093282    0.000000    0.426823
-mu_fn <- mu_constant
-mu_diff_fn <- mu_diff_constant
-mu_int_fn <- mu_int_constant
-neg_log_likelihood_none <- function(parameters, events, delay = 0, kernel, mu_fn = mu_none, 
-                                      mu_diff_fn = mu_diff_none, mu_int_fn = mu_int_none, 
-                                      print_level = 0) 
-{
-  names(parameters) <- c("alpha", "delta")
-  out <- neg_log_likelihood(parameters, events, delay, kernel, mu_fn, mu_diff_fn, mu_int_fn, print_level)
-  return(out)
-}
-covid_optim2 <- DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), 
-                        upper = c(20,20,20), 
-                        events = new_times_covid[356:3158], #day 50 to end
-                        kernel = exp_kernel, 
-                        mu_fn = mu_fn, 
-                        delay = 0,
-                        mu_diff_fn = mu_diff_fn,
-                        mu_int_fn = mu_int_fn, 
-                        control = list(itermax = 200, parallelType = "parallel"))
-
 
 
 N_runs <-500
@@ -210,14 +216,7 @@ set.seed(25)
 alpha_covid1 <- as.numeric(covid_optim1$optim$bestmem[1])
 delta_covid1 <- as.numeric(covid_optim1$optim$bestmem[2])
 A_covid1<- as.numeric(covid_optim1$optim$bestmem[3])
-#alpha_covid2 <- as.numeric(covid_optim2$optim$bestmem[1])
-#delta_covid2 <- as.numeric(covid_optim2$optim$bestmem[2])
-#A_covid2<- as.numeric(covid_optim2$optim$bestmem[3])
-B_covid1<- as.numeric(covid_optim1$optim$bestmem[4])
-#C_zika <-as.numeric(zika_optim$optim$bestmem[5])
-#M_zika <-as.numeric(zika_optim$optim$bestmem[5])
-#N_zika <- as.numeric(zika_optim$optim$bestmem[6])
-#P_zika <- as.numeric(zika_optim$optim$bestmem[7])
+
 # Register the parallel backend
 no_cores <- detectCores()
 registerDoParallel(cores=no_cores)
@@ -226,34 +225,14 @@ registerDoParallel(cores=no_cores)
 list_events_covid <- foreach(i = 1:N_runs, .packages = "epihawkes") %dopar% {
   events1 <- hawkes_simulation(events = c(0), kernel = exp_kernel, 
                               T_max = T_max1_covid,
-                              parameters = list(alpha =  alpha_covid1,
-                                                delta = delta_covid1,
-                                                A = A_covid1,
-                                                #B = B_covid1,
-                                                #C = C_zika,
-                                                #M = 18.404159,
-                                                #N= -3.054688,
-                                                #P = 98.929048,
-                                                delay = 0), 
+                              parameters = list(alpha =  0.05750214 ,
+                                                delta = 0.7811818 ,
+                                                A = 20.31431 ,
+                                                delay = 5), 
                               mu_fn = mu_fn,
                               mu_fn_diff = mu_diff_fn,
-                              N_max = length(new_times_covid),
+                              #N_max = length(new_times_covid),
                               print_level = 1)
-  #events2 <- hawkes_simulation(events = max(events1), kernel = exp_kernel, 
-   #                            T_max = T_max2_covid,
-    #                           parameters = list(alpha =  alpha_covid2,
-     #                                            delta = delta_covid2,
-      #                                           A = A_covid2,
-                                                 #B = B_covid2,
-                                                 #C = C_zika,
-                                                 #M = 18.404159,
-                                                 #N= -3.054688,
-                                                 #P = 98.929048,
-       #                                          delay = 0), 
-        #                       mu_fn = mu_constant,
-         #                      mu_fn_diff = mu_diff_constant,
-          #                     N_max = length(new_times_covid[355:3158]),
-           #                    print_level = 1)
   events1
 }
 
@@ -290,12 +269,13 @@ all_data_covid <- rbind(all_simulations_covid, df_new_times_covid)
 # Create the plot
 plot_covid<- ggplot() +
   theme_bw() +
-  labs(title = "Comparison of Simulated and Real Data for Zika",
-       x = "Time (days)",
+  labs(x = "Time (days)",
        y = expression(N(t))) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+  theme(axis.title.x = element_text(size = 20, family="Calibri"),
+        axis.title.y = element_text(size = 20, family="Calibri"),
+        axis.text = element_text(size = 20, family="Calibri")) +
+  scale_y_continuous(breaks = seq(0, 1500, by = 500), limits = c(0, 1500)) +
+  scale_x_continuous(breaks = seq(0, 55, by = 10), limits = c(0, 55))
 
 # Add the simulated data lines
 plot_covid <- plot_covid +
@@ -306,7 +286,7 @@ plot_covid <- plot_covid +
 # Add the real data line
 plot_covid <- plot_covid +
   geom_path(data = subset(all_data_covid, type == "Real Data"), 
-            aes(x = t, y = N), color = "red", size = 1)
+            aes(x = t, y = N), color = "red", linewidth = 1)
 
 print(plot_covid)
 
@@ -393,114 +373,102 @@ library(extrafont)
 # Create the plot for DAYS
 plot_days_covid <- ggplot() +
   theme_bw() +
-  labs(x = "Time (Days)",
+  labs(x = "Time (days)",
        y = "Count") +
-  theme(axis.title = element_text(size = 18, family = "Calibri"),
-        axis.text = element_text(size = 19, family = "Calibri"))
-
+  theme(axis.title.x = element_text(size = 20, family="Calibri"),
+        axis.title.y = element_text(size = 20, family="Calibri"),
+        axis.text = element_text(size = 20, family="Calibri"))+
+  scale_x_continuous(breaks = seq(0, 55, by = 10), limits = c(0, 55))
 # Add the simulated data lines
 plot_days_covid <- plot_days_covid +
   geom_line(data = all_simulations_df_covid, aes(x = Num_Days, y = Simulated_days, group = Simulation), color = "black", alpha = 0.1)
 
 # Add the real data line
 plot_days_covid <- plot_days_covid+
-  geom_line(data = all_simulations_df_covid, aes(x = Num_Days, y = True_days), color = "red", size = 0.3)
+  geom_line(data = all_simulations_df_covid, aes(x = Num_Days, y = True_days), color = "red", size = 0.8)
 
 print(plot_days_covid)
 
 
 
 ################## Intensities ################
-
-# Calculate intensities for all simulations and real data
-nass_covid<-c()
-for(i in 1:N_runs){
-  nass_covid<-c(nass_covid,max(length(list_events_covid[[i]])))}
-min(nass_covid)
 # Calculate intensities for all simulations and real data
 list_intensities_covid <- list()
 
 for(i in 1:N_runs){
   events_covid <- list_events_covid[[i]]
-  length<- length(events_covid)
-  data1 <- compute_intensity_function(events = events_covid[1:355], kernel = exp_kernel, 
-                                      T_max = max(events_covid[1:355]), parameters = list(alpha = alpha_covid1,
-                                                                                        delta = delta_covid1,
-                                                                                        A = A_covid1,
-                                                                                        delay = 0), mu_fn = mu_fn, 
+  data1 <- compute_intensity_function(events = events_covid, kernel = exp_kernel, 
+                                      T_max = T_max1_covid, parameters = list(alpha =  0.05750214 ,
+                                                                              delta = 0.7811818 ,
+                                                                              A = 20.31431 ,
+                                                                              #B = B_covid1,
+                                                                              #C = C_zika,
+                                                                              #M = 18.404159,
+                                                                              #N= -3.054688,
+                                                                              #P = 98.929048,
+                                                                              delay = 5), mu_fn = mu_fn, 
                                       N = 5000)
-  data2 <- compute_intensity_function(events = events_covid[356:length(events_covid)], kernel = exp_kernel, 
-                                      T_max = max(events_covid[356:length(events_covid)]), parameters = list(alpha = alpha_covid2,
-                                                                                         delta = delta_covid2,
-                                                                                         A = A_covid2,
-                                                                                         delay = 0), mu_fn = mu_fn, 
-                                      N = 5000)
-  mu_ts1 <- mu_fn(events_covid[1:355], parameters = list(alpha = alpha_covid1,
-                                                         delta = delta_covid1,
-                                                         A = A_covid1,
-                                                         delay = 0))
-  mu_ts2 <- mu_fn(events_covid[356:length(events_covid)], parameters = list(alpha = alpha_covid2,
-                                                                            delta = delta_covid2,
-                                                                            A = A_covid2,
-                                                                            delay = 0))
-  event_intensities1 <- mu_ts1 + conditional_intensity_list(times = events_covid[1:355]+1e-10, 
-                                                            events = events_covid[1:355], 
+  mu_ts1 <- mu_fn(events_covid, parameters = list(alpha =  0.05750214 ,
+                                                  delta = 0.7811818 ,
+                                                  A = 20.31431 ,
+                                                  #B = B_covid1,
+                                                  #C = C_zika,
+                                                  #M = 18.404159,
+                                                  #N= -3.054688,
+                                                  #P = 98.929048,
+                                                  delay = 5))
+  event_intensities1 <- mu_ts1 + conditional_intensity_list(times = events_covid+1e-10, 
+                                                            events = events_covid, 
                                                             kernel = exp_kernel, 
-                                                            parameters = list(alpha = alpha_covid1,
-                                                                              delta = delta_covid1,
-                                                                              A = A_covid1,
-                                                                              delay = 0))
-  event_intensities2 <- mu_ts2 + conditional_intensity_list(times = events_covid[356:length(events_covid)] +1e-10, 
-                                                            events = events_covid[356:length(events_covid)], 
-                                                            kernel = exp_kernel, 
-                                                            parameters = list(alpha = alpha_covid2,
-                                                                              delta = delta_covid2,
-                                                                              A = A_covid2,
-                                                                              delay = 0))
-  event_intensities <- c(event_intensities1, event_intensities2)
-  data_events <- data.frame(t = events_covid, intensity = event_intensities, type = paste("Simulated Data ", i))
+                                                            parameters = list(alpha =  0.05750214 ,
+                                                                              delta = 0.7811818 ,
+                                                                              A = 20.31431 ,
+                                                                              #B = B_covid1,
+                                                                              #C = C_zika,
+                                                                              #M = 18.404159,
+                                                                              #N= -3.054688,
+                                                                              #P = 98.929048,
+                                                                              delay = 5))
+  data_events <- data.frame(t = events_covid, intensity = event_intensities1, type = paste("Simulated Data ", i))
   list_intensities_covid[[i]] <- data_events
 }
 
 # Calculate intensities for the real data
-data_covid_true1 <- compute_intensity_function(events = new_times_covid[1:355], kernel = exp_kernel, 
-                                               T_max = T_max1_covid, parameters = list(alpha = alpha_covid1,
-                                                                                 delta = delta_covid1,
-                                                                                 A = A_covid1,
-                                                                                 delay = 0), mu_fn = mu_fn, 
-                                               N = 5000)
-data_covid_true2 <- compute_intensity_function(events = new_times_covid[355:3158], kernel = exp_kernel, 
-                                               T_max = T_max2_covid, parameters = list(alpha = alpha_covid2,
-                                                                                 delta = delta_covid2,
-                                                                                 A = A_covid2,
-                                                                                 delay = 0), mu_fn = mu_fn, 
+data_covid_true1 <- compute_intensity_function(events = new_times_covid, kernel = exp_kernel, 
+                                               T_max = T_max1_covid, parameters = list(alpha =  0.05750214 ,
+                                                                                       delta = 0.7811818 ,
+                                                                                       A = 20.31431 ,
+                                                                                       #B = B_covid1,
+                                                                                       #C = C_zika,
+                                                                                       #M = 18.404159,
+                                                                                       #N= -3.054688,
+                                                                                       #P = 98.929048,
+                                                                                       delay = 5), mu_fn = mu_fn, 
                                                N = 5000)
 
-mu_ts_true1 <- mu_fn(new_times_covid[1:355], parameters = list(alpha = alpha_covid1,
-                                                               delta = delta_covid1,
-                                                               A = A_covid1,
-                                                               delay = 0))
-mu_ts_true2 <- mu_fn(new_times_covid[356:3158], parameters = list(alpha = alpha_covid2,
-                                                                  delta = delta_covid2,
-                                                                  A = A_covid2,
-                                                                  delay = 0))
+mu_ts_true1 <- mu_fn(new_times_covid, parameters = list(alpha =  0.05750214 ,
+                                                        delta = 0.7811818 ,
+                                                        A = 20.31431 ,
+                                                        #B = B_covid1,
+                                                        #C = C_zika,
+                                                        #M = 18.404159,
+                                                        #N= -3.054688,
+                                                        #P = 98.929048,
+                                                        delay = 5))
 
-event_intensities_true1 <- mu_ts_true1 + conditional_intensity_list(times = new_times_covid[1:355] +1e-10, 
-                                                                    events = new_times_covid[1:355], 
+event_intensities_true1 <- mu_ts_true1 + conditional_intensity_list(times = new_times_covid +1e-10, 
+                                                                    events = new_times_covid, 
                                                                     kernel = exp_kernel, 
-                                                                    parameters = list(alpha = alpha_covid1,
-                                                                                      delta = delta_covid1,
-                                                                                      A = A_covid1,
-                                                                                      delay = 0))
-event_intensities_true2 <- mu_ts_true2 + conditional_intensity_list(times = new_times_covid[356:3158] +1e-10, 
-                                                                    events = new_times_covid[356:3158], 
-                                                                    kernel = exp_kernel, 
-                                                                    parameters = list(alpha = alpha_covid2,
-                                                                                      delta = delta_covid2,
-                                                                                      A = A_covid2,
-                                                                                      delay = 0))
-event_intensities_true <- c(event_intensities_true1, event_intensities_true2)
-df_new_times_covid <- data.frame(t = new_times_covid, intensity = event_intensities_true, type = "Real Data")
+                                                                    parameters = list(alpha =  0.05750214 ,
+                                                                                      delta = 0.7811818 ,
+                                                                                      A = 20.31431 ,
+                                                                                      #B = B_covid1,
+                                                                                      #C = C_zika,
+                                                                                      #M = 18.404159,
+                                                                                      #N= -3.054688,
+                                                                                      #P = 98.929048,
+                                                                                      delay = 5))
+df_new_times_covid <- data.frame(t = new_times_covid, intensity = event_intensities_true1, type = "Real Data")
 
 intensities_all_covid <- do.call(rbind, list_intensities_covid)
 intensities_all_covid$Simulation <- as.factor(intensities_all_covid$type)
@@ -509,13 +477,12 @@ intensities_all_covid$Simulation <- as.factor(intensities_all_covid$type)
 # plot the intensities
 plot_covid_int <- ggplot() +
   theme_bw() +
-  labs(title = "Comparison of Simulated and Real Intensities",
-       x = "Time (days)",
+  labs(x = "Time (days)",
        y = expression(lambda(t))) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
-
+  theme(axis.title.x = element_text(size = 20, family="Calibri"),
+        axis.title.y = element_text(size = 20, family="Calibri"),
+        axis.text = element_text(size = 20, family="Calibri")) +
+  scale_x_continuous(breaks = seq(0, 55, by = 10), limits = c(0, 55))
 # Add the simulated data lines
 plot_covid_int <- plot_covid_int +
   geom_path(data = intensities_all_covid, 
@@ -525,7 +492,7 @@ plot_covid_int <- plot_covid_int +
 # Add the real data line
 plot_covid_int <- plot_covid_int +
   geom_path(data = df_new_times_covid, 
-            aes(x = t, y = intensity), color = "red", size = 0.71)
+            aes(x = t, y = intensity), color = "red", size = 1)
 
 print(plot_covid_int)
 
@@ -535,39 +502,26 @@ print(plot_covid_int)
 new_times_covid1 <- new_times_covid + 0.001
 #new_times_covid2 <- new_times_covid1[1:355] 
 cumulative_intensities_covid1 <- sapply(new_times_covid1, function(t) {
-  integral_intensity(events = new_times_covid1[new_times_covid1 <= t], int_kernel = int_ray, 
-                     parameters = list(alpha = alpha_covid1,
-                                       delta = delta_covid1,
-                                       A = A_covid1,
-                                       #B = B_covid,
+  integral_intensity(events = new_times_covid1[new_times_covid1 <= t], int_kernel = int_exp, 
+                     parameters = list(alpha =  0.05750214 ,
+                                       delta = 0.7811818 ,
+                                       A = 20.31431 ,
+                                       #B = B_covid1,
                                        #C = C_zika,
                                        #M = 18.404159,
                                        #N= -3.054688,
                                        #P = 98.929048,
-                                       delay = 0), mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
+                                       delay = 5), mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
                      mu_int_fn = mu_int_fn)
 })
 
-new_times_covid3 <- new_times_covid1[356:3158] 
-cumulative_intensities_covid2 <- sapply(new_times_covid3, function(t) {
-  integral_intensity(events = new_times_covid3[new_times_covid3 <= t], int_kernel = int_exp, 
-                     parameters = list(alpha = alpha_covid2,
-                                       delta = delta_covid2,
-                                       A = A_covid2,
-                                       #B = B_covid,
-                                       #C = C_zika,
-                                       #M = 18.404159,
-                                       #N= -3.054688,
-                                       #P = 98.929048,
-                                       delay = 0), mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
-                     mu_int_fn = mu_int_fn)
-})
+
 
 
 
 ggplot(data.frame(x = 1:length(new_times_covid1) , y = cumulative_intensities_covid1), aes(x = x, y = y)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  geom_point(size=0.7) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size=0.9) +
   xlab("i") + 
   ylab(expression(Lambda(t[i]))) + 
   ggtitle("Cumulative Intensity vs Event Index") + 
@@ -605,31 +559,298 @@ df$lowerCI <- bk - conf_int
 library(extrafont)
 library(ggplot2)
 ggplot(df, aes(x = UniformRandomData, y = CalculatedIntensities)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", size = 0.6) +
+  geom_abline(intercept = 0, slope = 1 , color = "red", size = 1) +
   geom_line(aes(y = upperCI), linetype = "dashed", color = "red") +
   geom_line(aes(y = lowerCI), linetype = "dashed", color = "red") +
+  geom_point(size=0.8) +
   labs(x = "Quantiles", 
        y = "Cumulative Distribution Function") +
-  theme_minimal() +
-  theme(text = element_text(size = 18, family = "Calibri"),
-        axis.title = element_text(size = 18, family = "Calibri"),
-        axis.text = element_text(size = 18, family = "Calibri"))
+  theme_bw() +
+  theme(text = element_text(size = 20, family = "Calibri"),
+        axis.title = element_text(size = 20, family = "Calibri"),
+        axis.text = element_text(size = 20, family = "Calibri")) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), 
+                     limits = c(0, 1))+
+  scale_x_continuous(limits = c(0, max(df$UniformRandomData)))
 
 #### QQ plot ####
 
 
-df$lowerBetaCI <- qbeta(0.025, (1:confint_n), confint_n:1 + 1)
-df$upperBetaCI <- qbeta(0.975, (1:confint_n), confint_n:1 + 1)
+df$lowerBetaCI <- qbeta(0.025, (1:confint_n), confint_n:1)
+df$upperBetaCI <- qbeta(0.975, (1:confint_n), confint_n:1)
 
 ggplot(df, aes(x = UniformRandomData, y = CalculatedIntensities)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", size = 0.6) +
+  geom_abline(intercept = 0, slope = 1 , color = "red", size = 1) +
   geom_line(aes(y = upperBetaCI), linetype = "dashed", color = "red") +
   geom_line(aes(y = lowerBetaCI), linetype = "dashed", color = "red") +
+  geom_point(size=0.8) +
   labs(x = "Theoretical Quantiles", 
        y = "Empirical Quantiles") +
-  theme_minimal() +
-  theme(text = element_text(size = 18, family = "Calibri"),
-        axis.title = element_text(size = 18, family = "Calibri"),
-        axis.text = element_text(size = 18, family = "Calibri"))
+  theme_bw() +
+  theme(text = element_text(size = 20, family = "Calibri"),
+        axis.title = element_text(size = 20, family = "Calibri"),
+        axis.text = element_text(size = 20, family = "Calibri")) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), 
+                     limits = c(0, 1))+
+  scale_x_continuous(limits = c(0, max(df$UniformRandomData)))
+
+
+########### FORECASTING ###########
+
+# Determine the split point for the data
+# Forecast the last 5 events
+split_point <- 1188
+# Create the training and test sets
+train_times_covid <- new_times_covid[1:split_point]
+test_times_covid <- new_times_covid[(split_point+1):length(new_times_covid)]
+
+
+optim_covid_train <- DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), upper = c(10,80,25), events = train_times_covid,
+                             kernel = exp_kernel, 
+                             mu_fn = mu_fn, 
+                             delay = 5,
+                             mu_diff_fn = mu_diff_fn,
+                             mu_int_fn = mu_int_fn, control = list(parallelType = "parallel"))
+
+outtt_train_covid <- list()
+for(i in 1:20){
+  outtt_train_covid[[i]]<-optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = exp_derivatives,
+                           method="BFGS",
+                           events = train_times_covid, 
+                           kernel = exp_kernel,
+                           delay = 5,
+                           mu_fn = mu_fn, 
+                           mu_diff_fn = mu_diff_fn,
+                           mu_int_fn = mu_int_fn)}
+
+library(doParallel)
+library(foreach)
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+forecast_events_covid <- foreach(i = 1:1000, .packages = "epihawkes") %dopar% {
+  events1 <- forecast_simulation(events = train_times_covid, kernel = exp_kernel, 
+                               T_max = max(new_times_covid),
+                               parameters = list(alpha = 0.09239509 ,delta = 1.48763  , 
+                                                 A =  20.46666  ,
+                                                 delay = 5), 
+                               mu_fn = mu_fn,
+                               N_max = length(test_times_covid),
+                               mu_fn_diff = mu_diff_fn,
+                               print_level = print_level)
+}
+
+# Create data frame for real data
+df_test <- data.frame(t = c(max(train_times_covid), test_times_covid), N = seq(1188, 1193), type = "Real Data")
+
+# Initialize a list to hold all simulated event data frames
+list_df_simulations <- list()
+
+# Loop over each simulation
+for(i in 1:length(forecast_events_covid)) {
+  if(length(forecast_events_covid[[i]]) > 0){
+    # Create a data frame for each simulation
+    df_simulated <- data.frame(t = forecast_events_covid[[i]], N = seq(1188, length(forecast_events_covid[[i]]) + length(train_times_covid) - 1), type = paste("Simulated Data", i))
+  } else {
+    # Create an empty data frame with the appropriate columns if no new events occurred
+    df_simulated <- data.frame(t = numeric(), N = numeric(), type = character())
+  }
+  # Store each data frame in the list
+  list_df_simulations[[i]] <- df_simulated
+}
+
+
+# Combine all the data into one dataframe
+all_data <- do.call(rbind, list_df_simulations)
+
+# Convert Simulation column into factor to help with plotting
+all_data$Simulation <- as.factor(all_data$type)
+
+df_test$Simulation <- as.factor(df_test$type)
+
+all_data1 <- rbind(all_data, df_test)
+
+
+## CUMULATIVE PLOT
+
+# Create the plot
+plot_covid_forecast <- ggplot() +
+  theme_bw() +
+  labs(x = "Time (days)",
+       y = expression(N(t))) +
+  theme(text = element_text(size = 22, family = "Calibri"),
+        axis.title = element_text(size = 22, family = "Calibri"),
+        axis.text = element_text(size = 22, family = "Calibri"))
+
+plot_covid_forecast <- plot_covid_forecast +
+  #geom_path(data = subset(all_data_covid, type == "Real Data"), 
+  #          aes(x = t, y = N), color = "red", linewidth = 1) +
+  geom_path(data = subset(all_data1, type != "Real Data"), 
+            aes(x = t, y = N, group = Simulation), 
+            color = "black", alpha = 0.1, size = 0.3) +
+  geom_path(data = subset(all_data1, type == "Real Data"), 
+            aes(x = t, y = N), color = "darkred", size = 1)+
+  geom_point(data = subset(all_data1, type == "Real Data"), 
+             aes(x = t, y = N), color = "red", shape=20, size=4)
+
+print(plot_covid_forecast)
+
+
+
+# Initialize an empty vector to store RMSE values
+RMSEs_covid <- c()
+
+for(i in 1:length(forecast_events_covid)){
+  # Get the forecasted events, excluding the first one
+  forecasted_events <- forecast_events_covid[[i]][-1]
+  
+  # Get the test events, excluding the first one as it is the last point from the training data
+  test_events <- df_test$t[-1]
+  
+  # If there are fewer forecasted events than test events, 
+  # append the last forecasted event to the forecasted events until they're the same length
+  if (length(forecasted_events) < length(test_events)) {
+    forecasted_events <- c(forecasted_events, rep(tail(forecasted_events, n = 1), length(test_events) - length(forecasted_events)))
+  }
+  # Now that forecasted_events and test_events are the same length, calculate the RMSE
+  RMSEs_covid <- c(RMSEs_covid, sqrt(mean((forecasted_events - test_events)^2)))
+  }
+
+mean(RMSEs_covid, na.rm = TRUE)
+
+# Calculate the standard deviation of RMSEs_covid
+sd_RMSEs_covid <- sd(RMSEs_covid, na.rm = TRUE)
+
+# Calculate the number of RMSEs_covid
+n_RMSEs_covid <- sum(!is.na(RMSEs_covid))
+
+# Calculate the standard error of the mean RMSEs_covid
+sem_RMSEs_covid <- sd_RMSEs_covid / sqrt(n_RMSEs_covid)
+
+# Calculate the mean RMSE
+mean_RMSEs_covid <- mean(RMSEs_covid, na.rm = TRUE)
+
+# Calculate the 95% confidence intervals
+CI_lower <- mean_RMSEs_covid - 1.96 * sem_RMSEs_covid
+CI_upper <- mean_RMSEs_covid + 1.96 * sem_RMSEs_covid
+
+# Return the confidence interval
+c(CI_lower, CI_upper)
+
+# Load the boot package
+library(boot)
+
+# Define a function to calculate the mean
+mean_fun <- function(data, indices) {
+  return(mean(data[indices]))
+}
+
+# Generate R bootstrap replicates
+set.seed(123)  # For reproducibility
+R <- 10000  # Choose a number of bootstrap replicates
+results_boot <- boot(data=na.omit(RMSEs_covid), statistic=mean_fun, R=R)
+
+# Calculate the 95% confidence interval
+boot.ci(results_boot, type="bca")
+
+
+#####################################################
+# Initialize an empty list to hold the data frames for each simulation
+forecast_df_non_cum_covid_days <- list()
+# Loop over the list of simulations
+for(i in 1:1000){
+  # Convert simulation events from seconds to dates
+  non_cum_covid <- as.POSIXct(forecast_events_covid[[i]] * 86400, origin = "2022-09-01")
+  true_obs <-as.POSIXct(test_times_covid * 86400, origin = "2022-09-01")
+  # Convert the filtered events to weeks from the origin
+  all_dates_covid <- as.Date(seq(as.Date("2022-09-01"), max(as.Date(covid$dateRep)), by = "day"))
+  non_cum_days_covid <- as.data.frame(table(as.Date(non_cum_covid)))
+  names(non_cum_days_covid) <- c("date", "cases")
+  non_cum_days_covid$date<- as.Date(non_cum_days_covid$date)
+  ## Fill the missing dates with a value of 0
+  data_all_covid <- merge(data.frame(date = all_dates_covid), non_cum_days_covid, by = "date", all.x = TRUE)
+  # Replace NA values with 0
+  data_all_covid$cases[is.na(data_all_covid$cases)] <- 0
+  # True observations now
+  true_cum_days <- as.data.frame(table(as.Date(true_obs)))
+  names(true_cum_days) <- c("date", "cases")
+  non_cum_days_covid$date <- as.Date(non_cum_days_covid$date)
+  true_cum_days$date <- as.Date(true_cum_days$date)
+  ## Fill the missing dates with a value of 0
+  data_all_true <- merge(data.frame(date = all_dates_covid), true_cum_days, by = "date", all.x = TRUE)
+  # Replace NA values with 0
+  data_all_true$cases[is.na(data_all_true$cases)] <- 0
+  
+  non_cum_df_covid_days <- data.frame(
+    Days = all_dates_covid,
+    True_days = data_all_true$cases,
+    Simulated_days = data_all_covid$cases
+  )
+  forecast_df_non_cum_covid_days[[i]] <- non_cum_df_covid_days
+}
+
+# Prepare the simulated data
+for(i in 1:1000){
+  #list_df_non_cum_ebola[[i]]$type <- paste("Simulation ", i)
+  forecast_df_non_cum_covid_days[[i]]$type <- paste("Simulation ", i)
+}
+
+
+
+### DAYS
+
+# Create a combined data frame with all the simulation results
+all_forecasts_df <- do.call(rbind, forecast_df_non_cum_covid_days)
+all_forecasts_df$Simulation <- as.factor(all_forecasts_df$type)
+all_forecasts_df$Num_Days <- as.numeric(difftime(all_forecasts_df$Days, min(all_forecasts_df$Days), units = "days"))
+all_forecasts_df$Days <- as.Date(all_forecasts_df$Days)
+# Create the plot for DAYS
+plot_days_covid_forecast <- ggplot() +
+  theme_bw() +
+  labs(title = "Counts of Simulated Events and True Observations of Covid",
+       x = "Time (Days)",
+       y = "Count") +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.title = element_text(size = 14, family = "Calibri"),
+        axis.text = element_text(size = 12, family = "Calibri"))
+library(lubridate)
+all_forecasts_df<- all_forecasts_df %>% filter(Days >= as.Date("2022-10-25"))
+
+# Add the simulated data lines
+plot_days_covid_forecast <- plot_days_covid_forecast +
+  geom_line(data = all_forecasts_df, aes(x = Num_Days, y = Simulated_days, group = Simulation), color = "black", alpha = 0.3)
+
+# Add the real data line
+plot_days_covid_forecast <- plot_days_covid_forecast +
+  geom_line(data = all_forecasts_df, aes(x = Num_Days, y = True_days), color = "red", size = 0.5)
+
+print(plot_days_covid_forecast)
+
+
+#### RATIOS #####
+mu_divide_int_covid <- mu_ts_true1 / event_intensities_true1
+kernel_divide_int_covid <- conditional_intensity_list(times = new_times_covid +1e-10, 
+                                                     events = new_times_covid, 
+                                                     kernel = exp_kernel, 
+                                                     parameters = list(alpha =  0.05750214 ,
+                                                                       delta = 0.7811818 ,
+                                                                       A = 20.31431 ,
+                                                                       delay = 5)) / event_intensities_true1
+
+
+
+plot_df_covid <- data.frame(time = new_times_covid,
+                           mu_divide_int = mu_divide_int_covid,
+                           kernel_divide_int = kernel_divide_int_covid)
+
+df_long_covid <- reshape2::melt(plot_df_covid, id.vars = "time")
+
+# Create the plot
+ggplot(df_long_covid, aes(x = time, y = value, color = variable)) +
+  geom_line(size = 1) +  
+  scale_color_manual(values = c("lightblue", "green")) +
+  labs(x = "Time (days)", y = "Ratio") + 
+  theme_bw() +
+  theme(legend.position = "none", text = element_text(size = 22, family = "Calibri"),
+        axis.title = element_text(size = 22, family = "Calibri"),
+        axis.text = element_text(size = 22, family = "Calibri"))

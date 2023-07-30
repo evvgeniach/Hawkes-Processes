@@ -165,18 +165,24 @@ zika_optim <- DEoptim(neg_log_likelihood_quadratic, lower = c(0,0,0,-10,-10),
                     mu_diff_fn = mu_diff_fn,
                     mu_int_fn = mu_int_fn, 
                     control = list(itermax = 200, parallelType = "parallel"))
-# Define the number of starting points
-n_start_points <- 20
 
-# Generate starting points
+n_start_points <- 15
+
 start_points <- as.list(replicate(n_start_points, list(
   alpha = log(sample(2:30, 1)), 
   delta = log(sample(2:30, 1)), 
   A = log(sample(2:30, 1)),
-  B = log(sample(2:10, 1)),
-  C = log(sample(2:10, 1))
+  B = log(sample(2:30, 1)),
+  C = log(sample(2:30, 1))
   ), simplify = FALSE))
 
+my_neg_log_likelihood <- function(log_params, ...) {
+  # Transform the parameters back to their original scale
+  params <- exp(log_params)
+  # Compute the objective function value
+  val <- neg_log_likelihood(params, ...)
+  return(val)
+}
 
 library(doParallel)
 library(foreach)
@@ -185,7 +191,6 @@ library(foreach)
 cl <- makeCluster(detectCores())
 registerDoParallel(cl)
 
-npar <- 5 #we have 4 parameters
 
 # rewrite the loop with foreach
 outtt_zika <- foreach(i = 1:20, .packages=c('optimx','epihawkes')) %dopar% {
@@ -562,7 +567,7 @@ optim_zika_train <- DEoptim(neg_log_likelihood_quadratic, lower = c(0,0,0,-10,-1
 ## very similar with the original estimated parameters:
 ## 0.130588    0.235585    0.185065    1.904290   -0.035446
 outtt_train_zika <- list()
-for(i in 1:20){
+for(i in 1:15){
   outtt_train_zika[[i]]<-optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = exp_derivatives,
                                 method="BFGS",
                                 events = train_times_zika, 
@@ -714,4 +719,48 @@ ggplot(df_long_zika, aes(x = time, y = value, color = variable)) +
         axis.title = element_text(size = 22, family = "Calibri"),
         axis.text = element_text(size = 22, family = "Calibri"))
 
+#### forecasts without N_max specified: #####
 
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+forecast_events_zika <- foreach(i = 1:1000, .packages = "epihawkes") %dopar% {
+  events1 <- forecast_simulation(events = train_times_zika, kernel = ray_kernel, 
+                                 T_max = max(new_times),
+                                 parameters = list(alpha = 0.130588 ,delta = 0.235585  , 
+                                                   A =  0.185065  , B = 1.904290, C=-0.035446,
+                                                   delay = 10), 
+                                 mu_fn = mu_fn,
+                                 #N_max = length(test_times_zika),
+                                 mu_fn_diff = mu_diff_fn,
+                                 print_level = print_level)
+}
+
+N_zika <- c()
+for(i in 1:1000){
+  N_zika <- c(N_zika, length(forecast_events_zika[[i]])-1) #the first event is the last from the training data so exclude it
+}
+
+sd_N_zika <- sd(N_zika)
+
+
+# Calculate the standard error of the mean
+sem_N_zika <- sd_N_zika / sqrt(1000)
+
+# Calculate the mean 
+mean_N_zika <- mean(N_zika)
+
+# Calculate the 95% confidence intervals
+CI_lower_N_zika <- mean_N_zika - 1.96 * sem_N_zika
+CI_upper_N_zika <- mean_N_zika + 1.96 * sem_N_zika
+
+# Return the confidence interval
+c(CI_lower_N_zika, CI_upper_N_zika)
+
+# Generate R bootstrap replicates
+set.seed(123) 
+R <- 10000 
+results_boot_zika <- boot(data=na.omit(N_zika), statistic=mean_fun, R=R)
+results_boot_zika
+# Calculate the 95% confidence interval
+boot.ci(results_boot_zika, type="bca")

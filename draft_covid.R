@@ -166,7 +166,7 @@ covid_optim1 <- DEoptim(neg_log_likelihood_constant, lower = c(0,0,0),
                       control = list(itermax = 200, parallelType = "parallel"))
 
 # Define the number of starting points
-n_start_points <- 20
+n_start_points <- 15
 
 # Generate starting points
 start_points <- as.list(replicate(n_start_points, list(
@@ -184,7 +184,7 @@ registerDoParallel(cl)
 npar <- 3 #we have 3 parameters
 
 # rewrite the loop with foreach
-outtt_covid <- foreach(i = 1:20, .packages=c('optimx','epihawkes')) %dopar% {
+outtt_covid <- foreach(i = 1:15, .packages=c('optimx','epihawkes')) %dopar% {
   result <- optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = exp_derivatives,
                    method="BFGS",
                    events = new_times_covid, 
@@ -336,7 +336,7 @@ for(i in 1:N_runs){
 # Combine all the data into one dataframe
 all_simulations_non_cum_covid <- do.call(rbind, list_df_non_cum_covid)
 
-# Convert Simulation column into factor to help with plotting
+
 all_simulations_non_cum_covid$Simulation <- as.factor(all_simulations_non_cum_covid$type)
 
 # Create the plot for WEEKS
@@ -361,7 +361,6 @@ plot_non_cum_covid <- plot_non_cum_covid +
             aes(x = Week, y = True_count), color = "red", size = 1)
 
 print(plot_non_cum_covid)
-#ggsave("Zika_non_cum_plot_weeks.pdf", plot = plot_non_cum_zika, dpi = 600)
 
 ### DAYS
 
@@ -500,7 +499,7 @@ print(plot_covid_int)
 ############# Goodness of fit ##############
 
 new_times_covid1 <- new_times_covid + 0.001
-#new_times_covid2 <- new_times_covid1[1:355] 
+
 cumulative_intensities_covid1 <- sapply(new_times_covid1, function(t) {
   integral_intensity(events = new_times_covid1[new_times_covid1 <= t], int_kernel = int_exp, 
                      parameters = list(alpha =  0.05750214 ,
@@ -545,14 +544,13 @@ for(i in 1:length(uk)){
 }
 ## or could do qunif(ppoints(nrow(df)))
 
-# Create a data frame to hold your data
 df <- data.frame(CalculatedIntensities = uk, UniformRandomData = bk)
 
 # Calculate confidence intervals
 confint_n <- length(df$CalculatedIntensities)
 conf_int <- 1.36 / sqrt(confint_n)
 
-# Add upper and lower confidence intervals to your data frame
+# Add upper and lower confidence intervals
 df$upperCI <- bk + conf_int
 df$lowerCI <- bk - conf_int
 # Plot the data using ggplot
@@ -613,7 +611,7 @@ optim_covid_train <- DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), uppe
                              mu_int_fn = mu_int_fn, control = list(parallelType = "parallel"))
 
 outtt_train_covid <- list()
-for(i in 1:20){
+for(i in 1:15){
   outtt_train_covid[[i]]<-optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = exp_derivatives,
                            method="BFGS",
                            events = train_times_covid, 
@@ -797,7 +795,7 @@ for(i in 1:1000){
 
 
 
-### DAYS
+### DAYS (not included in report) ####
 
 # Create a combined data frame with all the simulation results
 all_forecasts_df <- do.call(rbind, forecast_df_non_cum_covid_days)
@@ -826,7 +824,7 @@ plot_days_covid_forecast <- plot_days_covid_forecast +
 
 print(plot_days_covid_forecast)
 
-
+#########
 #### RATIOS #####
 mu_divide_int_covid <- mu_ts_true1 / event_intensities_true1
 kernel_divide_int_covid <- conditional_intensity_list(times = new_times_covid +1e-10, 
@@ -854,3 +852,51 @@ ggplot(df_long_covid, aes(x = time, y = value, color = variable)) +
   theme(legend.position = "none", text = element_text(size = 22, family = "Calibri"),
         axis.title = element_text(size = 22, family = "Calibri"),
         axis.text = element_text(size = 22, family = "Calibri"))
+
+####### forecasts without N_max specified: ######
+
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+forecast_events_covid <- foreach(i = 1:1000, .packages = "epihawkes") %dopar% {
+  events1 <- forecast_simulation(events = train_times_covid, kernel = exp_kernel, 
+                                 T_max = max(new_times_covid),
+                                 parameters = list(alpha = 0.09239509 ,delta = 1.48763  , 
+                                                   A =  20.46666  ,
+                                                   delay = 5), 
+                                 mu_fn = mu_fn,
+                                 #N_max = length(test_times_covid),
+                                 mu_fn_diff = mu_diff_fn,
+                                 print_level = print_level)
+}
+
+
+N_covid <- c()
+for(i in 1:1000){
+  N_covid <- c(N_covid, length(forecast_events_covid[[i]])-1) #the first event is the last from the training data so exclude it
+}
+
+sd_N_covid <- sd(N_covid)
+
+
+
+# Calculate the standard error of the mean
+sem_N_covid <- sd_N_covid / sqrt(1000)
+
+# Calculate the mean 
+mean_N_covid <- mean(N_covid)
+
+# Calculate the 95% confidence intervals
+CI_lower_N_covid <- mean_N_covid - 1.96 * sem_N_covid
+CI_upper_N_covid <- mean_N_covid + 1.96 * sem_N_covid
+
+# Return the confidence interval
+c(CI_lower_N_covid, CI_upper_N_covid)
+
+# Generate R bootstrap replicates
+set.seed(123) 
+R <- 10000 
+results_boot_covid <- boot(data=na.omit(N_covid), statistic=mean_fun, R=R)
+results_boot_covid
+# Calculate the 95% confidence interval
+boot.ci(results_boot_covid, type="bca")

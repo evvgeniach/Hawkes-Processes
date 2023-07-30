@@ -84,6 +84,15 @@ mu_fn <- mu_quadratic
 mu_diff_fn <- mu_diff_quadratic
 mu_int_fn <- mu_int_quadratic
 
+neg_log_likelihood_quadratic <- function(parameters, events, delay = 0, kernel, mu_fn = mu_none, 
+                                         mu_diff_fn = mu_diff_none, mu_int_fn = mu_int_none, 
+                                         print_level = 0) 
+{
+  names(parameters) <- c("alpha", "delta", "A", "B", "C")
+  out <- neg_log_likelihood(parameters, events, delay, kernel, mu_fn, mu_diff_fn, mu_int_fn, print_level)
+  return(out)
+}
+
 optim_ebola<- DEoptim(neg_log_likelihood_quadratic, lower = c(0,0,0,-10,-10), upper = c(10,10,10,10,10), events = new_times_ebola_mod,
                       kernel = ray_kernel, 
                       mu_fn = mu_fn, 
@@ -91,17 +100,17 @@ optim_ebola<- DEoptim(neg_log_likelihood_quadratic, lower = c(0,0,0,-10,-10), up
                       mu_diff_fn = mu_diff_fn,
                       mu_int_fn = mu_int_fn, control = list(parallelType = "parallel"))
 # Define the number of starting points
-n_start_points <- 20
+n_start_points <- 15
 
 # Generate starting points
 start_points <- as.list(replicate(n_start_points, list(
-  alpha = log(sample(2:10, 1)), 
-  delta = log(sample(2:10, 1)), 
-  A = log(sample(2:10, 1)),
-  B = log(sample(2:10, 1)),
-  C = log(sample(2:10, 1))), simplify = FALSE))
+  alpha = log(sample(2:30, 1)), 
+  delta = log(sample(2:30, 1)), 
+  A = log(sample(2:30, 1)),
+  B = log(sample(2:30, 1)),
+  C = log(sample(2:30, 1))), simplify = FALSE))
 outtt <- list()
-for(i in 1:10){
+for(i in 1:15){
   outtt[[i]]<-optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = ray_derivatives,
        method="BFGS",
        events = new_times_ebola_mod, 
@@ -432,14 +441,13 @@ for(i in 1:length(uk)){
 }
 ## or could do qunif(ppoints(nrow(df)))
 
-# Create a data frame to hold your data
 df <- data.frame(CalculatedIntensities = uk, UniformRandomData = bk)
 
 # Calculate confidence intervals
 confint_n <- length(df$CalculatedIntensities)
 conf_int <- 1.36 / sqrt(confint_n)
 
-# Add upper and lower confidence intervals to your data frame
+# Add upper and lower confidence intervals
 df$upperCI <- bk + conf_int
 df$lowerCI <- bk - conf_int
 # Plot the data using ggplot
@@ -501,7 +509,7 @@ optim_ebola_train <- DEoptim(neg_log_likelihood_quadratic, lower = c(0,0,0,-10,-
                              mu_int_fn = mu_int_fn, control = list(parallelType = "parallel"))
 
 outtt_train <- list()
-for(i in 1:20){
+for(i in 1:15){
   outtt_train[[i]]<-optimx(par = unlist(start_points[[i]]), fn = neg_log_likelihood, gr = ray_derivatives,
                            method="BFGS",
                            events = train_times_ebola_mod, 
@@ -614,6 +622,7 @@ results_boot_ebola
 # Calculate the 95% confidence interval
 boot.ci(results_boot_ebola, type="bca")
 
+#### RATIOS ####
 
 mu_divide_int <- mu_ts_true1 / event_intensities_true1
 kernel_divide_int <- conditional_intensity_list(times = new_times_ebola_mod +1e-10,
@@ -644,7 +653,7 @@ ggplot(df_long1, aes(x = time, y = value, color = variable)) +
         axis.title = element_text(size = 22, family = "Calibri"),
         axis.text = element_text(size = 22, family = "Calibri"))
 
-##################################################################
+############################## not included in report ####################################
 
 
 # Initialize an empty list to hold the data frames for each simulation
@@ -725,4 +734,36 @@ plot_days_ebola_forecast <- plot_days_ebola_forecast +
   geom_line(data = all_forecasts_df, aes(x = Num_Days, y = True_days), color = "red", size = 0.5)
 
 print(plot_days_ebola_forecast)
+
+#####  Forecasts without N_max specified: #####
+
+N_ebola <- c()
+for(i in 1:1000){
+  N_ebola <- c(N_ebola, length(forecast_events_ebola_mod[[i]])-1) #the first event is the last from the training data so exclude it
+}
+
+sd_N_ebola <- sd(N_ebola)
+
+
+
+# Calculate the standard error of the mean
+sem_N_ebola <- sd_N_ebola / sqrt(1000)
+
+# Calculate the mean 
+mean_N_ebola <- mean(N_ebola)
+
+# Calculate the 95% confidence intervals
+CI_lower_N_ebola <- mean_N_ebola - 1.96 * sem_N_ebola
+CI_upper_N_ebola <- mean_N_ebola + 1.96 * sem_N_ebola
+
+# Return the confidence interval
+c(CI_lower_N_ebola, CI_upper_N_ebola)
+
+# Generate R bootstrap replicates
+set.seed(123) 
+R <- 10000 
+results_boot_ebola <- boot(data=na.omit(N_ebola), statistic=mean_fun, R=R)
+results_boot_ebola
+# Calculate the 95% confidence interval
+boot.ci(results_boot_ebola, type="bca")
 

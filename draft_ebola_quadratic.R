@@ -420,11 +420,13 @@ cumulative_intensities_ebola_new <- sapply(new_times_ebola_new, function(t) {
 
 ggplot(data.frame(x = 1:length(new_times_ebola_new) , y=cumulative_intensities_ebola_new), aes(x = x, y = y)) +
   geom_point(size=0.7) +
-  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed",size = 0.9) +
+  theme_bw()+
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size=0.9) +
   xlab("i") + 
-  ylab(expression(Lambda(t[i]))) + 
-  ggtitle("Cumulative Intensity vs Event Index") + 
-  theme_minimal()
+  ylab(expression(Lambda(t[i])))+
+  theme(text = element_text(size = 20, family = "Calibri"),
+        axis.title = element_text(size = 20, family = "Calibri"),
+        axis.text = element_text(size = 20, family = "Calibri"))
 
 #### intensities using Inter-arrival times for 1st day range
 inter_arrival_int_ebola_new <-c()
@@ -635,7 +637,7 @@ kernel_divide_int <- conditional_intensity_list(times = new_times_ebola_mod +1e-
                                                                   C = -0.0009531409 ,
                                                                   delay = 10)) / event_intensities_true1
 
-
+library(latex2exp)
 
 plot_df1 <- data.frame(time = new_times_ebola_mod,
                  mu_divide_int = mu_divide_int,
@@ -643,13 +645,15 @@ plot_df1 <- data.frame(time = new_times_ebola_mod,
 
 df_long1 <- reshape2::melt(plot_df1, id.vars = "time")
 
-# Create the plot
 ggplot(df_long1, aes(x = time, y = value, color = variable)) +
   geom_line(size = 1) +  
-  scale_color_manual(values = c("lightblue", "green")) +
+  scale_color_manual(values = c("lightblue", "green"), 
+                     labels = c(TeX("$\\frac{\\hat{\\mu}(t)}{\\hat{\\lambda}(t)}$"), 
+                                TeX("$\\frac{\\hat{\\varphi}(t - t_i)}{\\hat{\\lambda}(t)}$")),
+                     name = "Variable") +
   labs(x = "Time (days)", y = "Ratio") + 
   theme_bw() +
-  theme(legend.position = "none", text = element_text(size = 22, family = "Calibri"),
+  theme(legend.position = "right", text = element_text(size = 20, family = "Calibri"),
         axis.title = element_text(size = 22, family = "Calibri"),
         axis.text = element_text(size = 22, family = "Calibri"))
 

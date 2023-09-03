@@ -469,17 +469,14 @@ cumulative_intensities1 <- sapply(new_times1, function(t) {
 })
 
 compensator<-ggplot(data.frame(x = 1:length(new_times1) , y=cumulative_intensities1), aes(x = x, y = y)) +
-  geom_point(size=0.5) +
-  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size = 0.7) +
+  geom_point(size=0.7) +
+  theme_bw()+
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size=0.9) +
   xlab("i") + 
-  ylab(expression(Lambda(t[i]))) + 
-  theme_minimal() +
-  theme(
-    axis.title.x = element_text(size = 18, family = "Calibri"),
-    axis.title.y = element_text(size = 18, family = "Calibri"),
-    axis.text = element_text(size = 18, family = "Calibri")
-  )
-
+  ylab(expression(Lambda(t[i])))+
+  theme(text = element_text(size = 20, family = "Calibri"),
+        axis.title = element_text(size = 20, family = "Calibri"),
+        axis.text = element_text(size = 20, family = "Calibri"))
 
 ## Very good
 
@@ -666,7 +663,7 @@ for(i in 1:length(forecast_events_zika)){
   RMSEs_zika <- c(RMSEs_zika, sqrt(mean((forecasted_events - test_events)^2)))
 }
 
-mean(RMSEs_zika, na.rm = TRUE)
+
 
 sd_RMSEs_zika <- sd(RMSEs_zika, na.rm = TRUE)
 
@@ -712,10 +709,13 @@ df_long_zika <- reshape2::melt(plot_df_zika, id.vars = "time")
 # Create the plot
 ggplot(df_long_zika, aes(x = time, y = value, color = variable)) +
   geom_line(size = 1) +  
-  scale_color_manual(values = c("lightblue", "green")) +
+  scale_color_manual(values = c("lightblue", "green"), 
+                     labels = c(TeX("$\\frac{\\hat{\\mu}(t)}{\\hat{\\lambda}(t)}$"), 
+                                TeX("$\\frac{\\hat{\\varphi}(t - t_i)}{\\hat{\\lambda}(t)}$")),
+                     name = "Variable") +
   labs(x = "Time (days)", y = "Ratio") + 
   theme_bw() +
-  theme(legend.position = "none", text = element_text(size = 22, family = "Calibri"),
+  theme(legend.position = "right", text = element_text(size = 20, family = "Calibri"),
         axis.title = element_text(size = 22, family = "Calibri"),
         axis.text = element_text(size = 22, family = "Calibri"))
 

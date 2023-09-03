@@ -520,11 +520,13 @@ cumulative_intensities_covid1 <- sapply(new_times_covid1, function(t) {
 
 ggplot(data.frame(x = 1:length(new_times_covid1) , y = cumulative_intensities_covid1), aes(x = x, y = y)) +
   geom_point(size=0.7) +
+  theme_bw()+
   geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", size=0.9) +
   xlab("i") + 
-  ylab(expression(Lambda(t[i]))) + 
-  ggtitle("Cumulative Intensity vs Event Index") + 
-  theme_minimal()
+  ylab(expression(Lambda(t[i])))+
+  theme(text = element_text(size = 20, family = "Calibri"),
+      axis.title = element_text(size = 20, family = "Calibri"),
+      axis.text = element_text(size = 20, family = "Calibri"))
 
 ## good
 
@@ -846,10 +848,13 @@ df_long_covid <- reshape2::melt(plot_df_covid, id.vars = "time")
 # Create the plot
 ggplot(df_long_covid, aes(x = time, y = value, color = variable)) +
   geom_line(size = 1) +  
-  scale_color_manual(values = c("lightblue", "green")) +
+  scale_color_manual(values = c("lightblue", "green"), 
+                     labels = c(TeX("$\\frac{\\hat{\\mu}(t)}{\\hat{\\lambda}(t)}$"), 
+                                TeX("$\\frac{\\hat{\\varphi}(t - t_i)}{\\hat{\\lambda}(t)}$")),
+                     name = "Variable") +
   labs(x = "Time (days)", y = "Ratio") + 
   theme_bw() +
-  theme(legend.position = "none", text = element_text(size = 22, family = "Calibri"),
+  theme(legend.position = "right", text = element_text(size = 20, family = "Calibri"),
         axis.title = element_text(size = 22, family = "Calibri"),
         axis.text = element_text(size = 22, family = "Calibri"))
 

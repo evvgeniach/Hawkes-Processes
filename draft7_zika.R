@@ -436,13 +436,13 @@ event_intensities <- mu_ts + conditional_intensity_list(times = new_times +1e-10
                                                         kernel = ray_kernel, 
                                                         parameters = parameters)
 df_new_times <- data.frame(t = new_times, intensity = event_intensities, type = "Real Data")
-
-
+library(latex2exp)
+library(grid)
 # plot the intensities
 plot <- ggplot() +
   theme_bw() +
   labs(x = "Time (days)",
-       y = expression(lambda(t))) +
+       y = TeX("$\\lambda(t)$")) +
   theme(axis.title.x = element_text(size = 20, family="Calibri"),
         axis.title.y = element_text(size = 20, family="Calibri"),
         axis.text = element_text(size = 20, family="Calibri"))
@@ -458,6 +458,7 @@ plot <- plot + geom_line(data = df_new_times, aes(x = t, y = intensity), color =
 # Display the plot
 print(plot)
 
+grid.text("^", x = unit(0.01, "npc"), y = unit(0.52, "npc"), rot = 90, gp = gpar(fontsize = 15))
 
 ############# Goodness of fit ##############
 

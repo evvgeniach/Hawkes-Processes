@@ -398,6 +398,7 @@ plot_ebola_mod <- plot_ebola_mod +
 
 print(plot_ebola_mod)
 
+grid.text("^", x = unit(0.01, "npc"), y = unit(0.52, "npc"), rot = 90, gp = gpar(fontsize = 15))
 
 
 #### Goodness of fit ####

@@ -494,6 +494,7 @@ plot_covid_int <- plot_covid_int +
             aes(x = t, y = intensity), color = "red", size = 1)
 
 print(plot_covid_int)
+grid.text("^", x = unit(0.01, "npc"), y = unit(0.52, "npc"), rot = 90, gp = gpar(fontsize = 15))
 
 
 ############# Goodness of fit ##############

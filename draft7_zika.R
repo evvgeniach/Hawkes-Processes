@@ -504,7 +504,7 @@ df <- data.frame(CalculatedIntensities = uk, UniformRandomData = bk)
 confint_n <- length(df$CalculatedIntensities)
 conf_int <- 1.36 / sqrt(confint_n)
 
-# Add upper and lower confidence intervals to your data frame
+# Add upper and lower confidence intervals to data frame
 df$upperCI <- bk + conf_int
 df$lowerCI <- bk - conf_int
 # Plot the data using ggplot

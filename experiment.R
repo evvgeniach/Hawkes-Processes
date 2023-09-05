@@ -1,5 +1,4 @@
 library(epihawkes)
-
 library(DEoptim)
 parameters<- list(alpha = 0.8,
                   delta= 1.2,
@@ -9,6 +8,7 @@ mu_term<- "constant"
 mu_fn <- mu_constant
 mu_fn_diff <- mu_diff_constant
 mu_int_fn <- mu_int_constant
+N_runs <- 500
 # Register the parallel backend
 library(doParallel)
 library(foreach)
@@ -27,31 +27,14 @@ events_sim1 <- foreach(i = 1:N_runs, .packages = "epihawkes") %dopar% {
   events
 }
 
-
-# Define the number of starting points
-n_start_points <- 30
-
-# Generate starting points
-start_points <- as.list(replicate(n_start_points, list(
-  alpha = log(sample(2:30, 1)), 
-  delta = log(sample(2:30, 1)), 
-  A = log(sample(2:30, 1))), simplify = FALSE))
-
-
-outtt <- list()
-for(i in 1:30){
-  npar <- 3 #we have 3 parameters
-  outtt[[i]]<- optimx(par = unlist(start_points[[i]]), fn = my_neg_log_likelihood, gr = transformed_gradients_exp,
-                      method="BFGS",
-                      events = events_sim1, 
-                      delay = 0,
-                      kernel = exp_kernel, 
-                      mu_fn = mu_fn, 
-                      mu_diff_fn = mu_diff_fn,
-                      mu_int_fn = mu_int_fn)
-  outtt[[i]][1:npar] <-exp(outtt[[i]][1:npar])
-  }
-
+neg_log_likelihood_constant <- function(parameters, events, delay = 0, kernel, mu_fn = mu_none, 
+                                        mu_diff_fn = mu_diff_none, mu_int_fn = mu_int_none, 
+                                        print_level = 0) 
+{
+  names(parameters) <- c("alpha", "delta", "A")
+  out <- neg_log_likelihood(parameters, events, delay, kernel, mu_fn, mu_diff_fn, mu_int_fn, print_level)
+  return(out)
+}
 
 experiment_optim<- list()
 for(i in 1:N_runs){
@@ -70,17 +53,14 @@ for(i in 1:N_runs){
 }
 
 
-
 library(ggplot2)
 library(tidyr)
 library(dplyr)
 
 # First create a dataframe from estimated parameters:
 df_estimated <- as.data.frame(do.call(rbind, experiment_optim_params))
-df_estimated$run <- 1:N_runs  # assuming N_runs is defined somewhere
+df_estimated$run <- 1:N_runs 
 df_estimated$Type <- "Estimated"
-
-# Then create a dataframe for true parameters
 
 df_true <- data.frame(run = 1:N_runs,
                       alpha = rep(0.8, N_runs),
@@ -89,13 +69,12 @@ df_true <- data.frame(run = 1:N_runs,
 df_true$Type <- "True"
 
 
-# Combine the two dataframes:
 df_experiment <- rbind(df_estimated, df_true)
 
-# Reshape to a long format:
 df_long <- gather(df_experiment, Parameter, Value, -run, -Type)
+
 library(extrafont)
-# First, calculate the average estimated parameter values
+# calculate the average estimated parameter values
 df_avg <- df_estimated %>%
   summarise(across(c(alpha, beta, mu), mean)) %>%
   pivot_longer(everything(), names_to="Parameter", values_to="Avg_Value")
@@ -137,6 +116,91 @@ ggplot(df_long, aes(x=Parameter, y=Value)) +
         axis.ticks.x = element_blank(),  # Remove x-axis ticks
         strip.text = element_text(size = 22, family = "Calibri", margin = margin(10, 0, 10, 0)))
 
+
+# Calculate 95% confidence intervals for estimated parameters
+conf_intervals_exp <- df_estimated %>%
+  summarise(across(c(alpha, beta, mu), list(lower = ~quantile(., 0.025), upper = ~quantile(., 0.975))))
+
+# Calculate standard deviations for each parameter
+sd_alpha <- sd(df_estimated$alpha)
+sd_beta <- sd(df_estimated$beta)
+sd_mu <- sd(df_estimated$mu)
+
+# Calculate the standard error of the mean for each parameter
+sem_alpha <- sd_alpha / sqrt(N_runs)
+sem_beta <- sd_beta / sqrt(N_runs)
+sem_mu <- sd_mu / sqrt(N_runs)
+
+# Calculate the mean for each parameter
+mean_alpha <- mean(df_estimated$alpha)
+mean_beta <- mean(df_estimated$beta)
+mean_mu <- mean(df_estimated$mu)
+
+# Calculate the 95% confidence intervals for alpha
+CI_lower_alpha <- mean_alpha - 1.96 * sem_alpha
+CI_upper_alpha <- mean_alpha + 1.96 * sem_alpha
+
+# Calculate the 95% confidence intervals for beta
+CI_lower_beta <- mean_beta - 1.96 * sem_beta
+CI_upper_beta <- mean_beta + 1.96 * sem_beta
+
+# Calculate the 95% confidence intervals for mu
+CI_lower_mu <- mean_mu - 1.96 * sem_mu
+CI_upper_mu <- mean_mu + 1.96 * sem_mu
+
+# Return the confidence intervals
+list(
+  alpha = c(CI_lower_alpha, CI_upper_alpha),
+  beta = c(CI_lower_beta, CI_upper_beta),
+  mu = c(CI_lower_mu, CI_upper_mu)
+)
+
+# Generate R bootstrap replicates
+set.seed(123) 
+R <- 10000 
+results_boot_exp_mu <- boot(data=na.omit(df_estimated$mu), statistic=mean_fun, R=R)
+results_boot_exp_mu
+# Calculate the 95% confidence interval
+boot.ci(results_boot_exp_mu, type="bca")
+
+
+
+MSEs_alpha <- c()
+MSEs_beta <- c()
+MSEs_mu <- c()
+for(i in 1:N_runs) {
+  estimated_params <- experiment_optim_params[[i]]
+  true_params <- c(alpha = 0.8, beta = 1.2, mu = 4.5)
+  
+  MSE_alpha <- mean((estimated_params['alpha'] - true_params['alpha'])^2)
+  MSE_beta <- mean((estimated_params['beta'] - true_params['beta'])^2)
+  MSE_mu <- mean((estimated_params['mu'] - true_params['mu'])^2)
+  
+  MSEs_alpha <- c(MSEs_alpha, MSE_alpha)
+  MSEs_beta <- c(MSEs_beta, MSE_beta)
+  MSEs_mu <- c(MSEs_mu, MSE_mu)
+}
+mean_MSE_alpha <- mean(MSEs_alpha, na.rm = TRUE)
+sd_MSE_alpha <- sd(MSEs_alpha, na.rm = TRUE)
+
+mean_MSE_beta <- mean(MSEs_beta, na.rm = TRUE)
+sd_MSE_beta <- sd(MSEs_beta, na.rm = TRUE)
+
+mean_MSE_mu <- mean(MSEs_mu, na.rm = TRUE)
+sd_MSE_mu <- sd(MSEs_mu, na.rm = TRUE)
+sem_MSE_alpha <- sd_MSE_alpha / sqrt(N_runs)
+sem_MSE_beta <- sd_MSE_beta / sqrt(N_runs)
+sem_MSE_mu <- sd_MSE_mu / sqrt(N_runs)
+CI_alpha <- c(mean_MSE_alpha - 1.96 * sem_MSE_alpha, mean_MSE_alpha + 1.96 * sem_MSE_alpha)
+CI_beta <- c(mean_MSE_beta - 1.96 * sem_MSE_beta, mean_MSE_beta + 1.96 * sem_MSE_beta)
+CI_mu <- c(mean_MSE_mu - 1.96 * sem_MSE_mu, mean_MSE_mu + 1.96 * sem_MSE_mu)
+list(
+  alpha = CI_alpha,
+  beta = CI_beta,
+  mu = CI_mu
+)
+
+
 ### APPENDIX ####
 
 ## histogram
@@ -153,56 +217,6 @@ ggplot(df_long, aes(x=Value, fill=Type)) +
         axis.text = element_text(size = 18, family = "Calibri"),
         strip.text = element_text(size = 22, family = "Calibri"))
 
-
-#bias <- sapply(df_estimated[, c("alpha", "beta", "A")], mean) - c(alpha=0.8, beta=1.2, A=4.5)
-#mse <- sapply(df_estimated[, c("alpha", "beta", "A")], function(est) mean((est - c(alpha=0.8, beta=1.2, A=4.5))^2))
-
-#print(paste("Bias for alpha, beta, and A are: ", bias["alpha"], ", ", bias["beta"], ", and ", bias["A"], " respectively."))
-#print(paste("MSE for alpha, beta, and A are: ", mse["alpha"], ", ", mse["beta"], ", and ", mse["A"], " respectively."))
-
-#### Confidence intervals ####
-
-# Set the confidence level
-conf_level <- 0.95
-
-# Calculate confidence intervals for each parameter
-ci_alpha <- quantile(df_estimated$alpha, probs = c((1-conf_level)/2, 1-(1-conf_level)/2))
-ci_beta <- quantile(df_estimated$beta, probs = c((1-conf_level)/2, 1-(1-conf_level)/2))
-ci_A <- quantile(df_estimated$A, probs = c((1-conf_level)/2, 1-(1-conf_level)/2))
-
-# Calculate coverage probability for each parameter
-coverage_alpha <- ifelse(ci_alpha[1] <= 0.8 & ci_alpha[2] >= 0.8, 1, 0)
-coverage_beta <- ifelse(ci_beta[1] <= 1.2 & ci_beta[2] >= 1.2, 1, 0)
-coverage_A <- ifelse(ci_A[1] <= 4.5 & ci_A[2] >= 4.5, 1, 0)
-
-# Combine into a data frame
-coverage_df <- data.frame(
-  Parameter = c("alpha", "beta", "A"),
-  Lower_CI = c(ci_alpha[1], ci_beta[1], ci_A[1]),
-  Upper_CI = c(ci_alpha[2], ci_beta[2], ci_A[2]),
-  Coverage = c(coverage_alpha, coverage_beta, coverage_A)
-)
-
-print(coverage_df)
-
-##### ADD confidence intervals to initial plot #####
-
-coverage_df_long <- coverage_df %>%
-  pivot_longer(cols = c("Lower_CI", "Upper_CI"), names_to = "Type", values_to = "Value") %>%
-  mutate(run = if_else(Type == "Lower_CI", 1, N_runs))  # assuming N_runs is defined somewhere
-
-ggplot(df_long, aes(x=run, y=Value, color=Type)) +
-  geom_line() +
-  facet_wrap(~Parameter, scales="free_y", labeller = label_parsed) +
-  geom_hline(data=subset(coverage_df_long, Type == "Lower_CI"), aes(yintercept=Value), linetype="dashed", color="blue") +
-  geom_hline(data=subset(coverage_df_long, Type == "Upper_CI"), aes(yintercept=Value), linetype="dashed", color="blue") +
-  scale_color_manual(values=c("Estimated" = "lightblue", "True" = "red")) +
-  theme_minimal() +
-  labs(x="Simulation", y="Parameter Value", color="Type") +
-  theme(text = element_text(size = 18, family = "Calibri"),
-        axis.title = element_text(size = 18, family = "Calibri"),
-        axis.text = element_text(size = 18, family = "Calibri"),
-        strip.text = element_text(size = 22, family = "Calibri"))  
 
 
 ##########
@@ -251,33 +265,6 @@ print(plot_experiment)
 ###############################################################
 
 
-run_optimization_ray <- function(start_params) {
-  log_start_params <- log(start_params)
-  print(start_params)
-  print(log_start_params)
-  out_new <- optimx(par = log_start_params, fn = my_neg_log_likelihood, gr = transformed_gradients, 
-                    events = new_times_ebola, 
-                    kernel = ray_kernel, 
-                    mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
-                    mu_int_fn = mu_int_fn)
-  
-  # Transform parameters back to their original scale
-  out_new[1:5] <- exp(out_new[1:5])
-  return(out_new)
-}
-
-
-results_ray <- lapply(start_points, run_optimization_ray)
-
-DEoptim(fn = neg_log_likelihood_constant, events = events_sim1,
-        lower=c(0,0,0,0), upper=c(10,10,10,10),
-        kernel = ray_kernel, 
-        mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
-        mu_int_fn = mu_int_fn,
-        print_level = 0)
-
-
-
 ########################################
 
 new_times_experiment1 <- events_sim1[[1]] + 0.0001
@@ -313,14 +300,14 @@ for(i in 1:length(uk_experiment)){
 }
 
 
-# Create a data frame to hold your data
+# Create a data frame to hold data
 df_experiment <- data.frame(CalculatedIntensities = uk_experiment, UniformRandomData = bk_experiment)
 
 # Calculate confidence intervals
 confint_n_experiment <- length(df_experiment$CalculatedIntensities)
 conf_int_experiment <- 1.36 / sqrt(confint_n_experiment)
 
-# Add upper and lower confidence intervals to your data frame
+# Add upper and lower confidence intervals to data frame
 df_experiment$upperCI <- bk_experiment + conf_int_experiment
 df_experiment$lowerCI <- bk_experiment - conf_int_experiment
 # Plot the data using ggplot

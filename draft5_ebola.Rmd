@@ -106,11 +106,20 @@ ggplot(data.frame(total_days = 1:total_days, cumulative_cases), aes(x = total_da
        x = "Total Days",
        y = "Cumulative Cases")
 
-ggplot(ebola_kikwit_1995, aes(x = 1:total_days, y = onset)) +
-  geom_line(color = "red") +
-  labs(title = "Line Plot of Onset",
-       x = "Number of Days",
-       y = "Count")
+ggplot(ebola_kikwit_1995, aes(x = as.Date(date), y = onset)) +
+  theme_bw() +
+  geom_col(fill = "steelblue", color = "black", width = 1.1) +
+  labs(x = "Date of symptom onset",
+       y = "Count") +
+  scale_x_date(date_labels = "%d-%b", date_breaks = "4 weeks", 
+               ) +
+  theme(
+    axis.title.x = element_text(size = 24, family="Calibri"),
+    axis.title.y = element_text(size = 24, family="Calibri"),
+    axis.text = element_text(size = 24, family="Calibri")
+  )
+
+
 
 ```
 Now plot for the weeks:
@@ -145,16 +154,15 @@ ggplot(week_dat_2, aes(x = Week, y = cumulative_cases)) +
        x = "Total Weeks",
        y = "Cumulative Cases")
 bar_plot_ebola <- ggplot(week_dat_2, aes(x = Week, y = onset)) +
-  geom_col(fill = "steelblue", width = 0.5) +
-  labs(title = "Bar Plot of Cases for Ebola in Kikwit",
-       x = "Number of Weeks",
+  theme_bw() +
+  geom_col(fill = "steelblue", color = "black", width = 0.5) +
+  labs(x = "Weeks",
        y = "Count") +
+  scale_x_continuous(breaks = seq(0, max(week_dat_2$Week), by = 5))+
   theme(
-    plot.title = element_text(size = 20),  # Adjust title size
-    axis.title.x = element_text(size = 16),  # Adjust x axis title size
-    axis.title.y = element_text(size = 16),  # Adjust y axis title size
-    plot.subtitle = element_text(size = 14),  # Adjust subtitle size (if you have one)
-    axis.text = element_text(size = 18)
+    axis.title.x = element_text(size = 24, family="Calibri"),
+    axis.title.y = element_text(size = 24, family="Calibri"),
+    axis.text = element_text(size = 24, family="Calibri")
   )
 
 ggsave("bar_plot_ebola.pdf", plot = bar_plot_ebola, dpi = 400)
@@ -814,7 +822,7 @@ neg_log_likelihood_constant <- function(parameters, events, delay = 0, kernel, m
   out <- neg_log_likelihood(parameters, events, delay, kernel, mu_fn, mu_diff_fn, mu_int_fn, print_level)
   return(out)
 }
-outtt1<-DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), upper = c(20,20,20), events = new_times_ebola[1:2],
+outtt1<-DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), upper = c(30,30,30), events = new_times_ebola[1:2],
                 kernel = ray_kernel, 
                 mu_fn = mu_fn, 
                 delay = 10,
@@ -822,7 +830,7 @@ outtt1<-DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), upper = c(20,20,2
                 mu_int_fn = mu_int_fn, control = list(itermax = 300,parallelType = "parallel"))
 
 outtt2<-DEoptim(neg_log_likelihood_constant, lower = c(0,0,0), upper = c(30,30,30), 
-                events = new_times_ebola[3:30], ##from day 60 until day 99
+                events = new_times_ebola[3:30], ##from day 61 until day 99
                 kernel = ray_kernel, 
                 mu_fn = mu_fn, 
                 delay= 10,
@@ -894,7 +902,7 @@ registerDoParallel(cores=no_cores)
 ## eighth try (for two different hawkes processes) alpha = 0.502957,delta =  0.715178, A = 0.680109,delay = 12.7 (val = -12.763584)
 ## ninth try (for two different hawkes processes) alpha = 0.388909,delta =  0.499072, A = 0.507917,delay = 10 (val = -27.902948)
 ## tenth try for four different hawkes processes:
-## alpha1 = 0, delta1 = 16.32, A1 = 0.03
+## alpha1 = 0, delta1 = 16.32, A1 = 0.03358992
 ## alpha2 = 0.003238504, delta2 =  0.0001579189, A2 = 0.4945921
 ## alpha3 = 0.04317416, delta3 = 0.3554813, A3 = 4.384568
 ## alpha4 = 0.6314767, delta4 = 5.009715, A4 = 0.3646924
@@ -964,12 +972,11 @@ all_data <- rbind(all_simulations, df_new_times_ebola)
 # Create the plot
 plot_ebola <- ggplot() +
   theme_bw() +
-  labs(title = "Comparison of Simulated and Real Data for Ebola",
-       x = "Time (days)",
+  labs(x = "Time (days)",
        y = expression(N(t))) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+  theme(axis.title.x = element_text(size = 20, family="Calibri"),
+        axis.title.y = element_text(size = 20, family="Calibri"),
+        axis.text = element_text(size = 20, family="Calibri"))
 
 # Add the simulated data lines
 plot_ebola <- plot_ebola +
@@ -1068,15 +1075,16 @@ all_simulations_df <- do.call(rbind, list_df_non_cum_ebola_days)
 all_simulations_df$Simulation <- as.factor(all_simulations_df$type)
 all_simulations_df$Num_Days <- as.numeric(difftime(all_simulations_df$Days, min(all_simulations_df$Days), units = "days"))
 
+max_days <- max(all_simulations_df$Num_Days, na.rm = TRUE)
 # Create the plot for DAYS
 plot_days_ebola <- ggplot() +
   theme_bw() +
-  labs(title = "Counts of Simulated Events and True Observations of Ebola",
-       x = "Time (Days)",
+  labs(x = "Time (Days)",
        y = "Count") +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+  theme(axis.title.x = element_text(size = 20, family="Calibri"),
+    axis.title.y = element_text(size = 20, family="Calibri"),
+    axis.text = element_text(size = 20, family="Calibri"))+
+  scale_x_continuous(limits = c(0, max_days * 1.05))
 
 # Add the simulated data lines
 plot_days_ebola <- plot_days_ebola +
@@ -1084,7 +1092,7 @@ plot_days_ebola <- plot_days_ebola +
 
 # Add the real data line
 plot_days_ebola <- plot_days_ebola +
-  geom_line(data = all_simulations_df, aes(x = Num_Days, y = True_days), color = "red", size = 0.3)
+  geom_line(data = all_simulations_df, aes(x = Num_Days, y = True_days), color = "red", size = 0.8)
 
 print(plot_days_ebola)
 ggsave("Ebola_non_cum_plot_days.pdf", plot = plot_days_ebola, dpi = 600)
@@ -1109,7 +1117,7 @@ for(i in 1:N_runs){
   data1 <- compute_intensity_function(events = events_ebola[1:2], kernel = ray_kernel, 
         T_max = max(events_ebola[1:2]), parameters = list(alpha = alpha1,
                                                 delta = delta1,
-                                                A = 0,
+                                                A = 0.03,
                                                 delay = 10), mu_fn = mu_fn, 
         N = 5000)
   data2 <- compute_intensity_function(events = events_ebola[3:30], kernel = ray_kernel, 
@@ -1148,7 +1156,7 @@ for(i in 1:N_runs){
                                                 delay = 10))
   event_intensities1 <- mu_ts1 + conditional_intensity_list(times = events_ebola[1:2] +1e-10, events = events_ebola[1:2], kernel = ray_kernel, parameters = list(alpha = alpha1,
                                                 delta = delta1,
-                                                A = 0,
+                                                A = 0.03,
                                                 delay = 10))
   event_intensities2 <- mu_ts2 + conditional_intensity_list(times = events_ebola[3:30] +1e-10, events = events_ebola[3:30], kernel = ray_kernel, parameters = list(alpha = alpha2,
                                                 delta = delta2,
@@ -1194,7 +1202,7 @@ data_ebola_true4 <- compute_intensity_function(events = new_times_ebola[278:292]
         N = 5000)
 mu_ts_true1 <- mu_fn(new_times_ebola[1:2], parameters = list(alpha = alpha1,
                                                 delta = delta1,
-                                                A = 0,
+                                                A = 0.03,
                                                 delay = 10))
 mu_ts_true2 <- mu_fn(new_times_ebola[3:30], parameters = list(alpha = alpha2,
                                                 delta = delta2,
@@ -1210,7 +1218,7 @@ mu_ts_true4 <- mu_fn(new_times_ebola[278:292], parameters = list(alpha = alpha4,
                                                 delay = 10))
 event_intensities_true1 <- mu_ts_true1 + conditional_intensity_list(times = new_times_ebola[1:2] +1e-10, events = new_times_ebola[1:2], kernel = ray_kernel, parameters = list(alpha = alpha1,
                                                 delta = delta1,
-                                                A = 0,
+                                                A = 0.03,
                                                 delay = 10))
 event_intensities_true2 <- mu_ts_true2 + conditional_intensity_list(times = new_times_ebola[3:30] +1e-10, events = new_times_ebola[3:30], kernel = ray_kernel, parameters = list(alpha = alpha2,
                                                 delta = delta2,
@@ -1235,12 +1243,11 @@ intensities_all$Simulation <- as.factor(intensities_all$type)
 # plot the intensities
 plot_ebola_int <- ggplot() +
   theme_bw() +
-  labs(title = "Comparison of Simulated and Real Intensities",
-       x = "Time (days)",
+  labs(x = "Time (days)",
        y = expression(lambda(t))) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(size = 12))
+  theme(axis.title.x = element_text(size = 20, family="Calibri"),
+        axis.title.y = element_text(size = 20, family="Calibri"),
+        axis.text = element_text(size = 20, family="Calibri"))
 
 # Add the simulated data lines
 plot_ebola_int <- plot_ebola_int +
@@ -1278,7 +1285,6 @@ neg_log_likelihood_constant <- function(parameters, events, delay = 0, kernel, m
   out <- neg_log_likelihood(parameters, events, delay, kernel, mu_fn, mu_diff_fn, mu_int_fn, print_level)
   return(out)
 }
-
 
 
 # Function to optimize
@@ -1347,38 +1353,73 @@ result4 <- foreach(i=1:N_runs, .packages=c('DEoptim','foreach','epihawkes')) %do
 Create density plots to compare the true parameters with the parameters deemed optimal from our simulations.
 
 ```{r}
-
+true_pars_ebola <- list(Dayrange1 = list('Alpha' = alpha1,
+                                         'Delta' = delta1,
+                                         'A' = A1),
+                        Dayrange2 = list('Alpha' = alpha2,
+                                         'Delta' = delta2,
+                                         'A' = A2),
+                        Dayrange3 = list('Alpha' = alpha3,
+                                         'Delta' = delta3,
+                                         'A' = A3),
+                        Dayrange4 = list('Alpha' = alpha4,
+                                         'Delta' = delta4,
+                                         'A' = A4))
 new_pars_ebola <- list()
-for(i in 1:N_runs){
-  new_pars_ebola[[i]]<- out1[[i]]$par
+for(i in 1:50){
+  new_pars_ebola$Dayrange1[[i]]<- result1[[i]]$optim$bestmem
+  new_pars_ebola$Dayrange2[[i]]<- result2[[i]]$optim$bestmem
+  new_pars_ebola$Dayrange3[[i]]<- result3[[i]]$optim$bestmem
+  new_pars_ebola$Dayrange4[[i]]<- result4[[i]]$optim$bestmem
+  
 }
-estimated_pars_ebola <- do.call("rbind", new_pars_ebola)  # Bind all estimated parameters into a matrix
-estimated_pars_ebola <- as.data.frame(estimated_pars_ebola)
+
+estimated_pars_ebola_dayrange1 <- do.call("rbind", new_pars_ebola$Dayrange1)  # Bind all estimated parameters into a matrix
+estimated_pars_ebola_dayrange2 <- do.call("rbind", new_pars_ebola$Dayrange2)
+estimated_pars_ebola_dayrange3 <- do.call("rbind", new_pars_ebola$Dayrange3)
+estimated_pars_ebola_dayrange4 <- do.call("rbind", new_pars_ebola$Dayrange4)
+
+estimated_pars_ebola_dayrange1 <- as.data.frame(estimated_pars_ebola_dayrange1)
+estimated_pars_ebola_dayrange2 <- as.data.frame(estimated_pars_ebola_dayrange2)
+estimated_pars_ebola_dayrange3 <- as.data.frame(estimated_pars_ebola_dayrange3)
+estimated_pars_ebola_dayrange4 <- as.data.frame(estimated_pars_ebola_dayrange4)
 library(ggplot2)
 library(gridExtra)
+
 # Create an empty list to store the plots
 plot_list_ebola <- list()
-max(estimated_pars_ebola$alpha)
-#Create density plots
+
+# Create a list of true parameters for reference
+true_pars <- c(alpha1, alpha2, alpha3, alpha4, delta1, delta2, delta3, delta4, A1, A2, A3, A4)
+
+# Create list of data frames
+estimated_pars_ebola_list <- list(estimated_pars_ebola_dayrange1, estimated_pars_ebola_dayrange2, 
+                                  estimated_pars_ebola_dayrange3, estimated_pars_ebola_dayrange4)
+
+# Create names for the plots
+plot_names <- c("Dayrange1", "Dayrange2", "Dayrange3", "Dayrange4")
+
 for(i in 1:4) {
-  # Create a dataframe for plotting
-  plot_df_ebola <- data.frame(Estimated_Value = unlist(estimated_pars_ebola[, i]))
-  
-  # Generate a density plot for each parameter
-  p_ebola <- ggplot(plot_df_ebola, aes(x = Estimated_Value)) +
-    geom_density(fill = "skyblue", alpha = 0.7) +
-    geom_vline(aes(xintercept = out_ebola$par[[i]]), color = "red", linetype = "dashed") +
-    labs(title = paste("Parameter:", names(out_ebola$par)[i]),
-         x = "Estimated Value",
-         y = "Density") +
-    theme_minimal()  # A clean theme
-  
-  # Store the plot in the list
-  plot_list_ebola[[i]] <- p_ebola
+  for(j in 1:3) {
+    # Create a dataframe for plotting
+    plot_df_ebola <- data.frame(Estimated_Value = unlist(estimated_pars_ebola_list[[i]][, j]))
+    
+    # Generate a density plot for each parameter
+    p_ebola <- ggplot(plot_df_ebola, aes(x = Estimated_Value)) +
+      geom_density(fill = "skyblue", alpha = 0.7) +
+      geom_vline(aes(xintercept = true_pars[(i-1)*3 + j]), color = "red", linetype = "dashed") +
+      labs(title = paste("Parameter:", names(true_pars_ebola[[plot_names[i]]])[j], "for", plot_names[i]),
+           x = "Estimated Value",
+           y = "Density") +
+      theme_minimal()  # A clean theme
+    
+    # Store the plot in the list
+    plot_list_ebola[[3*(i-1) + j]] <- p_ebola
+  }
 }
 
 # Arrange the plots in a grid
-grid_ebola<-do.call(grid.arrange, c(plot_list_ebola, ncol = 4))
+grid_ebola <- do.call(grid.arrange, c(plot_list_ebola, ncol = 3))
 
 pdf("myplot_ebola.pdf", width = 15, height = 8.5) 
 
@@ -1391,6 +1432,53 @@ grid::grid.draw(grid_ebola)
 # Close the device
 dev.off()
 
+
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+
+# Create a list of the estimated parameters
+estimated_pars_ebola_list <- list(Dayrange1 = estimated_pars_ebola_dayrange1, 
+                                  Dayrange2 = estimated_pars_ebola_dayrange2, 
+                                  Dayrange3 = estimated_pars_ebola_dayrange3, 
+                                  Dayrange4 = estimated_pars_ebola_dayrange4)
+
+# Add the day range and parameter names to each data frame, then bind them all together
+estimated_pars_ebola_df <- lapply(names(estimated_pars_ebola_list), function(dayrange) {
+  estimated_pars_ebola_list[[dayrange]] %>%
+    mutate(Dayrange = dayrange) %>%
+    rename(Alpha = par1, Delta = par2, A = par3) %>%
+    pivot_longer(-Dayrange, names_to = "Parameter", values_to = "Estimated_Value")
+}) %>%
+  bind_rows()
+
+
+# Similarly, restructure the true parameters to a data frame in tidy format
+true_pars_ebola_df <- true_pars_ebola %>%
+  enframe(name = "Dayrange", value = "Parameters") %>%
+  unnest_wider(Parameters)
+# Continue reshaping true_pars_ebola_df
+true_pars_ebola_df <- true_pars_ebola_df %>%
+  pivot_longer(cols = -Dayrange, names_to = "Parameter", values_to = "True_Value")
+
+
+# Merge the estimated and true parameters into one data frame
+pars_ebola_df <- left_join(estimated_pars_ebola_df, true_pars_ebola_df, by = c("Dayrange", "Parameter"))
+
+# Generate the plots
+p_ebola <- ggplot(pars_ebola_df, aes(x = Estimated_Value)) +
+  geom_density(fill = "skyblue", alpha = 0.7) +
+  geom_vline(aes(xintercept = True_Value), color = "red", linetype = "dashed") +
+  facet_grid(Dayrange ~ Parameter, scales = "free") +
+  labs(x = "Estimated Value", y = "Density") +
+  theme_minimal()
+
+# Save the plot to a PDF
+ggsave("myplot_ebola.pdf", p_ebola, width = 15, height = 8.5)
+
+
+
 ```
 
 Create boxplots
@@ -1398,71 +1486,72 @@ Create boxplots
 
 ```{r}
 
-# Create an empty list to store the boxplots
-boxplot_list_ebola <- list()
+# Generate the plots
+b_ebola <- ggplot(pars_ebola_df, aes(x = "", y = Estimated_Value)) +
+  geom_boxplot(fill = "skyblue", alpha = 0.7) +
+  geom_hline(aes(yintercept = True_Value), color = "red", linetype = "dashed") +
+  facet_grid(Dayrange ~ Parameter, scales = "free_y") +
+  labs(x = "", y = "Estimated Value") +
+  theme_minimal()
 
-# Loop over the parameters
-for(i in 1:length(out_ebola$par)) {
-  # Create a dataframe for plotting
-  boxplot_df_ebola <- data.frame(Estimated_Value = unlist(estimated_pars_ebola[, i]))
-  
-  # Generate a boxplot for each parameter
-  b_ebola <- ggplot(boxplot_df_ebola, aes(x = "", y = Estimated_Value)) +
-    geom_boxplot(fill = "skyblue", alpha = 0.7) +
-    geom_hline(aes(yintercept = out_ebola$par[[i]]), color = "red", linetype = "dashed") +
-    labs(title = paste("Parameter:", names(out_ebola$par)[i]),
-         x = "",
-         y = "Estimated Value") +
-    theme_minimal()  # A clean theme
-  
-  # Store the boxplot in the list
-  boxplot_list_ebola[[i]] <- b_ebola
-}
-
-# Arrange the boxplots in a grid
-grid_box_ebola<-do.call(grid.arrange, c(boxplot_list_ebola, ncol = length(out_ebola$par)))
-
-pdf("boxplot_ebola.pdf", width = 15, height = 8.5) 
-
-# Clear the grid graphical device
-grid::grid.newpage()
-
-# Draw the plot on the device
-grid::grid.draw(grid_box_ebola)
-
-# Close the device
-dev.off()
-
+# Save the plot to a PDF
+ggsave("boxplot_ebola.pdf", b_ebola, width = 15, height = 8.5)
 ```
 
 Find $R_c$ for simulated events
 
 ```{r}
-for(i in 1:N_runs){
-  estimated_pars_ebola$Rc[i] <- unlist(estimated_pars_ebola$alpha)[i]/unlist(estimated_pars_ebola$delta)[i]
+library(ggplot2)
+library(dplyr)
+
+# Create names for the plots
+plot_names <- c("Dayrange1", "Dayrange2", "Dayrange3", "Dayrange4")
+
+# Create an empty list to store Rc values for all day ranges and all simulations
+rc_list_ebola <- list()
+
+for(i in 1:4) {
+  # Calculate Rc for all simulations in the i-th day range
+  rc_list_ebola[[i]] <- estimated_pars_ebola_list[[i]]$par1 / estimated_pars_ebola_list[[i]]$par2
 }
 
-real_Rc_ebola <- out_ebola$par[1]/out_ebola$par[2]
+# Combine all Rc values into a single data frame
+rc_df_ebola <- bind_rows(lapply(1:4, function(i) {
+  data.frame(Dayrange = plot_names[i], Estimated_Rc = rc_list_ebola[[i]])
+}))
 
+# Calculate true Rc values
+true_Rc_ebola <- lapply(true_pars_ebola, function(x) {x$Alpha / x$Delta})
 
-# Create a dataframe for the Rc values
-rc_df_ebola <- data.frame(Estimated_Rc = estimated_pars_ebola$Rc)
+# Combine true Rc values into a single data frame
+true_Rc_df_ebola <- bind_rows(lapply(1:4, function(i) {
+  data.frame(Dayrange = plot_names[i], True_Rc = true_Rc_ebola[[i]])
+}))
 
-# Plot the density
-pnew_ebola <- ggplot(rc_df_ebola, aes(x = Estimated_Rc)) +
-    geom_density(fill = "skyblue", alpha = 0.5) +
-    geom_vline(aes(xintercept = real_Rc_ebola), color = "red", linetype = "dashed") +
-    labs(title = "Comparison of Real and Estimated Rc Values",
-         x = "Estimated Rc Value",
-         y = "Density") +
-    theme_minimal()
+# Merge the estimated and true Rc values into one data frame
+rc_ebola_df <- left_join(rc_df_ebola, true_Rc_df_ebola, by = "Dayrange")
+
+# Generate the density plot
+pnew_ebola <- ggplot(rc_ebola_df, aes(x = Estimated_Rc)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  geom_vline(aes(xintercept = True_Rc), color = "red", linetype = "dashed") +
+  facet_wrap(~ Dayrange, scales = "free") +
+  labs(title = "Comparison of Real and Estimated Rc Values",
+       x = "Estimated Rc Value",
+       y = "Density") +
+  theme_minimal()
 
 print(pnew_ebola)
 
-# Boxplot
-boxplot(estimated_pars_ebola$Rc, main="Estimated Rc Values", ylab="Rc", border="blue", 
-        col="lightgray", notch=TRUE, varwidth=TRUE)
-abline(h = real_Rc_ebola, col="red", lty=2)
+# Generate the boxplot
+ggplot(rc_ebola_df[rc_ebola_df$Estimated_Rc<20,], aes(x = Dayrange, y = Estimated_Rc)) +
+  geom_boxplot(fill = "lightgray", alpha = 0.7, varwidth = TRUE) +
+  geom_hline(aes(yintercept = True_Rc), color = "red", linetype = "dashed") +
+  labs(title = "Estimated Rc Values",
+       x = "Day Range",
+       y = "Rc") +
+  theme_minimal()
+
 
 ```
 
@@ -1472,6 +1561,9 @@ Use goodness of fit test to see whether our model is good.
 #show_hawkes_GOF(list(times = new_times_ebola,params = params_ebola))
 events_one_sim <- new_times_ebola + 0.0001
 new_times_ebola1 <- events_one_sim[1:2] 
+mu_fn <- mu_constant
+mu_diff_fn<-mu_diff_constant
+mu_int_fn <- mu_int_constant
 cumulative_intensities_ebola1 <- sapply(new_times_ebola1, function(t) {
   integral_intensity(events = new_times_ebola1[new_times_ebola1 <= t], int_kernel = int_ray, 
                      parameters = list(alpha = alpha1 ,delta = delta1, A = 0.03,delay = 10),
@@ -1485,14 +1577,14 @@ cumulative_intensities_ebola2 <- sapply(new_times_ebola2, function(t) {
                      mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
                      mu_int_fn = mu_int_fn)
 })
-new_times_ebola3 <- events_one_sim[31:(length(events_one_sim)-15)] 
+new_times_ebola3 <- events_one_sim[31:277] 
 cumulative_intensities_ebola3 <- sapply(new_times_ebola3, function(t) {
   integral_intensity(events = new_times_ebola3[new_times_ebola3 <= t], int_kernel = int_ray, 
                      parameters = list(alpha = alpha3 ,delta = delta3, A = A3,delay = 10), 
                      mu_fn = mu_fn, mu_diff_fn = mu_diff_fn,
                      mu_int_fn = mu_int_fn)
 })
-new_times_ebola4 <- events_one_sim[(length(events_one_sim)-14):(length(events_one_sim))]
+new_times_ebola4 <- events_one_sim[278:292]
 cumulative_intensities_ebola4 <- sapply(new_times_ebola4, function(t) {
   integral_intensity(events = new_times_ebola4[new_times_ebola4 <= t], int_kernel = int_ray, 
                      parameters = list(alpha = alpha4 ,delta = delta4, A = A4,delay = 10), 
@@ -1507,13 +1599,72 @@ cumulative_intensities_ebola<- c(cumulative_intensities_ebola1,
 
 #cumulative_intensities_ebola<-sort(cumulative_intensities_ebola)
 
-ggplot(data.frame(x = 1:length(events_one_sim) , y=cumulative_intensities_ebola), aes(x = x, y = y)) +
+ggplot(data.frame(x = 1:length(new_times_ebola4) , y=cumulative_intensities_ebola4), aes(x = x, y = y)) +
   geom_point() +
   geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
   xlab("i") + 
   ylab(expression(Lambda(t[i]))) + 
   ggtitle("Cumulative Intensity vs Event Index") + 
   theme_minimal()
+
+#### intensities using Inter-arrival times for 1st day range
+inter_arrival_int_ebola <-c()
+for(i in 1:length(cumulative_intensities_ebola1)-1){
+  inter_arrival_int_ebola<-c(inter_arrival_int_ebola, cumulative_intensities_ebola1[i+1] - cumulative_intensities_ebola1[i])
+}
+
+uk<- 1-exp(-inter_arrival_int_ebola)
+
+uk<-sort(uk)
+bk<-c()
+for(i in 1:length(uk)){
+  bk<-c(bk,(i-(1/2))/length(uk))
+}
+## or could do qunif(ppoints(nrow(df)))
+
+# Create a data frame to hold your data
+df <- data.frame(CalculatedIntensities = uk, UniformRandomData = bk)
+
+# Calculate confidence intervals
+confint_n <- length(df$CalculatedIntensities)
+conf_int <- 1.36 / sqrt(confint_n)
+
+# Add upper and lower confidence intervals to your data frame
+df$upperCI <- bk + conf_int
+df$lowerCI <- bk - conf_int
+# Plot the data using ggplot
+library(extrafont)
+library(ggplot2)
+ggplot(df, aes(x = UniformRandomData, y = CalculatedIntensities)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "red", size = 0.6) +
+  geom_line(aes(y = upperCI), linetype = "dashed", color = "red") +
+  geom_line(aes(y = lowerCI), linetype = "dashed", color = "red") +
+  labs(x = "Quantiles", 
+       y = "Cumulative Distribution Function") +
+  theme_minimal() +
+  theme(text = element_text(size = 18, family = "Calibri"),
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
+
+#### QQ plot ####
+
+
+df$lowerBetaCI <- qbeta(0.025, (1:confint_n), confint_n:1 + 1)
+df$upperBetaCI <- qbeta(0.975, (1:confint_n), confint_n:1 + 1)
+
+ggplot(df, aes(x = UniformRandomData, y = CalculatedIntensities)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red", size = 0.6) +
+  geom_line(aes(y = upperBetaCI), linetype = "dashed", color = "red") +
+  geom_line(aes(y = lowerBetaCI), linetype = "dashed", color = "red") +
+  labs(x = "Theoretical Quantiles", 
+       y = "Empirical Quantiles") +
+  theme_minimal() +
+  theme(text = element_text(size = 18, family = "Calibri"),
+        axis.title = element_text(size = 18, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
+
 ```
 
 
@@ -2067,37 +2218,53 @@ ggplot(data.frame(x = 1:length(new_times_ebola13) , y=cumulative_intensities_ebo
 
 
 ```{r}
-new_events = c(0,0.1,0.2,0.4,0.6,0.8,1.5,2,5.6,7,9,10)
+new_events <- c(0,0.1,0.2,0.4,0.6,0.8,1.5,2,5.6,7,9,10)
 int<-plot_intensity(new_events, T_max=10, kernel = exp_kernel,
                parameters = list(alpha = 0.5,
                                  delta = 0.52,
                                  A = 2,
-                                 delay = 3), mu_fn = mu_constant)
+                                 delay = 0), mu_fn = mu_constant)
 
 # Calculate intensities for the real data
 new_int <- compute_intensity_function(events = new_events, kernel = exp_kernel, 
         T_max = max(new_events), parameters = list(alpha = 0.5,
                                  delta = 0.52,
                                  A = 2,
-                                 delay = 3), mu_fn = mu_constant, 
+                                 delay = 0), mu_fn = mu_constant, 
         N = 5000)
 mu_fn <- mu_constant
 mu_ts_new <- mu_fn(new_events, parameters =  list(alpha = 0.5,
                                  delta = 0.52,
                                  A = 2,
-                                 delay = 3))
+                                 delay = 0))
 event_intensities_new <- mu_ts_new + conditional_intensity_list(times = new_events +1e-10, events = new_events, kernel = exp_kernel, parameters = list(alpha = 0.5,
                                  delta = 0.52,
                                  A = 2,
-                                 delay = 3))
-new_example_df <- data.frame(t = new_events, intensity = event_intensities_new)
+                                 delay = 0))
+new_example_df_ray <- data.frame(t = new_events, intensity = event_intensities_new)
+
 
 new_int_plot <- ggplot(new_int, aes(t, intensity)) + 
-            geom_line() + geom_point(data = new_example_df, 
+  theme_classic()+
+            geom_line() + geom_point(data = new_example_df_ray, 
             aes(t, event_intensities_new)) +
   labs(x = "Time", y = expression(lambda(t)))+
-  theme(axis.title = element_text(size = 20),
-        axis.text = element_text(size = 18))
+  theme(axis.title = element_text(size = 20, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
 
-ggsave("intensity.pdf", plot=new_int_plot, dpi = 400)
+
+
+
+# Create a data frame with timepoints and event counts
+df_time <- data.frame(Time = new_events, Event = 1:length(new_events))
+
+# Create the plot
+ggplot(df_time, aes(x = Time, y = Event)) +
+  geom_step(color = "darkred") +
+  labs(x = "Time", y = expression(N(t))) +
+  theme_bw()+
+  theme(axis.title = element_text(size = 20, family = "Calibri"),
+        axis.text = element_text(size = 18, family = "Calibri"))
+
+
 ```
